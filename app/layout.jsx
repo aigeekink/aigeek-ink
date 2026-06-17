@@ -19,7 +19,7 @@ export default function RootLayout({ children }) {
               window.dataLayer = window.dataLayer || [];
               function gtag(){dataLayer.push(arguments);}
               gtag('js', new Date());
-              gtag('config', 'G-X0NV0P822E');
+              gtag('config', 'G-KE8GMC3JX0');
             `,
           }}
         />
