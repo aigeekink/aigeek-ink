@@ -5,7 +5,10 @@ export default function Home() {
       {/* Nav */}
       <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 0', borderBottom: '1px solid #f0f0f0' }}>
         <span style={{ fontWeight: '600', fontSize: '1.1rem', letterSpacing: '-0.02em' }}>aigeek.ink</span>
-        <span style={{ fontSize: '0.8rem', color: '#888', background: '#f5f5f5', padding: '4px 12px', borderRadius: '999px' }}>Coming soon</span>
+        <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
+          <a href="/pricing" style={{ fontSize: '0.85rem', color: '#555', textDecoration: 'none' }}>Pricing</a>
+          <span style={{ fontSize: '0.8rem', color: '#888', background: '#f5f5f5', padding: '4px 12px', borderRadius: '999px' }}>Coming soon</span>
+        </div>
       </nav>
 
       {/* Hero */}
@@ -40,6 +43,36 @@ export default function Home() {
           </button>
         </div>
         <p style={{ fontSize: '0.78rem', color: '#aaa', marginTop: '0.75rem' }}>Be first to know when we launch. No spam.</p>
+      </section>
+
+      {/* Hero image — AI generated tattoo showcase */}
+      <section style={{ margin: '0 -1.5rem 0', position: 'relative' }}>
+        <img
+          src="/dragon-tattoo.png"
+          alt="AI-generated cyberpunk dragon back tattoo — created with aigeek.ink"
+          style={{
+            width: '100%',
+            height: '420px',
+            objectFit: 'cover',
+            objectPosition: 'center 20%',
+            display: 'block',
+          }}
+        />
+        <div style={{
+          position: 'absolute',
+          bottom: '1rem',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.65)',
+          color: '#fff',
+          fontSize: '0.78rem',
+          padding: '5px 14px',
+          borderRadius: '999px',
+          whiteSpace: 'nowrap',
+          backdropFilter: 'blur(4px)',
+        }}>
+          ✦ AI-generated — cyberpunk dragon back piece
+        </div>
       </section>
 
       {/* How it works */}
@@ -77,8 +110,14 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer style={{ borderTop: '1px solid #f0f0f0', padding: '1.5rem 0', textAlign: 'center' }}>
-        <p style={{ fontSize: '0.78rem', color: '#aaa' }}>© 2026 aigeek.ink — AI tattoo planning tool</p>
+      <footer style={{ borderTop: '1px solid #f0f0f0', padding: '1.5rem 0 2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '1.5rem', marginBottom: '1rem' }}>
+          <a href="/pricing" style={{ fontSize: '0.82rem', color: '#666', textDecoration: 'none' }}>Pricing</a>
+          <a href="/terms" style={{ fontSize: '0.82rem', color: '#666', textDecoration: 'none' }}>Terms of Service</a>
+          <a href="/privacy" style={{ fontSize: '0.82rem', color: '#666', textDecoration: 'none' }}>Privacy Policy</a>
+          <a href="/refund" style={{ fontSize: '0.82rem', color: '#666', textDecoration: 'none' }}>Refund Policy</a>
+        </div>
+        <p style={{ fontSize: '0.78rem', color: '#aaa', textAlign: 'center' }}>© 2026 aigeek.ink — AI tattoo planning tool</p>
       </footer>
 
     </main>
