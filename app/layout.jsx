@@ -11,7 +11,7 @@ export default function RootLayout({ children }) {
       <head>
         <script
           async
-          src="https://www.googletagmanager.com/gtag/js?id=G-X0NV0P822E"
+          src="https://www.googletagmanager.com/gtag/js?id=G-KE8GMC3JX0"
         />
         <script
           dangerouslySetInnerHTML={{
