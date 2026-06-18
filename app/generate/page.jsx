@@ -84,19 +84,16 @@ export default function GeneratePage() {
   return (
     <main style={{ fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '680px', margin: '0 auto', padding: '0 1.5rem' }}>
 
-      {/* Nav */}
       <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 0', borderBottom: '1px solid #f0f0f0' }}>
         <a href="/" style={{ fontWeight: '600', fontSize: '1.1rem', letterSpacing: '-0.02em', textDecoration: 'none', color: '#111' }}>aigeek.ink</a>
         <a href="/pricing" style={{ fontSize: '0.85rem', color: '#555', textDecoration: 'none' }}>Pricing</a>
       </nav>
 
-      {/* Header */}
       <section style={{ padding: '2.5rem 0 1.5rem', textAlign: 'center' }}>
         <h1 style={{ fontSize: '1.8rem', fontWeight: '700', color: '#111', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>Generate your tattoo</h1>
         <p style={{ fontSize: '0.95rem', color: '#666', lineHeight: '1.6' }}>Describe your idea below. The AI will create a tattoo-ready design in seconds.</p>
       </section>
 
-      {/* Model selector */}
       <section style={{ marginBottom: '1.5rem' }}>
         <p style={{ fontSize: '0.75rem', letterSpacing: '0.08em', color: '#aaa', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Choose AI model</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -152,7 +149,6 @@ export default function GeneratePage() {
         <p style={{ fontSize: '0.78rem', color: '#aaa', marginTop: '0.5rem', textAlign: 'center' }}>💎 Pro models available in Starter and Geek packs</p>
       </section>
 
-      {/* Prompt input */}
       <section style={{ marginBottom: '1rem' }}>
         <p style={{ fontSize: '0.75rem', letterSpacing: '0.08em', color: '#aaa', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Describe your tattoo</p>
         <textarea
@@ -180,7 +176,6 @@ export default function GeneratePage() {
         </div>
       </section>
 
-      {/* Prompt suggestions */}
       <section style={{ marginBottom: '1.5rem' }}>
         <p style={{ fontSize: '0.75rem', letterSpacing: '0.08em', color: '#aaa', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Try an example</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -204,7 +199,6 @@ export default function GeneratePage() {
         </div>
       </section>
 
-      {/* Generate button */}
       <button
         onClick={handleGenerate}
         disabled={isGenerating || !prompt.trim()}
@@ -225,6 +219,82 @@ export default function GeneratePage() {
         {isGenerating ? '✦ Generating your tattoo...' : '✦ Generate tattoo design'}
       </button>
 
-      {/* Error */}
       {error && (
-        <div style={{ background: '#fff5f5',
+        <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '10px', padding: '1rem', marginBottom: '1.5rem' }}>
+          <p style={{ fontSize: '0.88rem', color: '#dc2626', margin: 0 }}>{error}</p>
+        </div>
+      )}
+
+      {result && (
+        <section style={{ marginBottom: '2rem' }}>
+          <p style={{ fontSize: '0.75rem', letterSpacing: '0.08em', color: '#aaa', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Your tattoo design</p>
+          <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', border: '1px solid #f0f0f0' }}>
+            <img
+              src={result.imageUrl}
+              alt={'AI tattoo design'}
+              style={{ width: '100%', display: 'block' }}
+            />
+            <div style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
+              padding: '2rem 1rem 1rem',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-end',
+            }}>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.75rem' }}>aigeek.ink — free preview</span>
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.7rem' }}>watermarked</span>
+            </div>
+          </div>
+
+          <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: '12px', padding: '1.25rem', marginTop: '1rem', textAlign: 'center' }}>
+            <p style={{ fontWeight: '600', color: '#111', marginBottom: '0.4rem', fontSize: '0.95rem' }}>Love this design?</p>
+            <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1rem', lineHeight: '1.6' }}>Get the HD version, see it on your skin, and download a printable stencil to take to your artist.</p>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <a href="/pricing" style={{
+                display: 'inline-block',
+                background: '#111',
+                color: '#fff',
+                padding: '10px 24px',
+                borderRadius: '8px',
+                textDecoration: 'none',
+                fontSize: '0.9rem',
+                fontWeight: '600',
+              }}>
+                Upgrade — from $2.99
+              </a>
+              <button
+                onClick={() => { setResult(null); setPrompt('') }}
+                style={{
+                  background: '#f5f5f5',
+                  color: '#555',
+                  border: '1px solid #e5e5e5',
+                  padding: '10px 24px',
+                  borderRadius: '8px',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                }}
+              >
+                Try another
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <footer style={{ borderTop: '1px solid #f0f0f0', padding: '1.5rem 0 2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '1.5rem', marginBottom: '1rem' }}>
+          <a href="/pricing" style={{ fontSize: '0.82rem', color: '#666', textDecoration: 'none' }}>Pricing</a>
+          <a href="/terms" style={{ fontSize: '0.82rem', color: '#666', textDecoration: 'none' }}>Terms</a>
+          <a href="/privacy" style={{ fontSize: '0.82rem', color: '#666', textDecoration: 'none' }}>Privacy</a>
+          <a href="/refund" style={{ fontSize: '0.82rem', color: '#666', textDecoration: 'none' }}>Refund</a>
+        </div>
+        <p style={{ fontSize: '0.78rem', color: '#aaa', textAlign: 'center' }}>2026 aigeek.ink</p>
+      </footer>
+
+    </main>
+  )
+}
