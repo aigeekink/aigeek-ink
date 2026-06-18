@@ -7,7 +7,7 @@ export default function Home() {
         <span style={{ fontWeight: '600', fontSize: '1.1rem', letterSpacing: '-0.02em' }}>aigeek.ink</span>
         <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
           <a href="/pricing" style={{ fontSize: '0.85rem', color: '#555', textDecoration: 'none' }}>Pricing</a>
-          <span style={{ fontSize: '0.8rem', color: '#888', background: '#f5f5f5', padding: '4px 12px', borderRadius: '999px' }}>Coming soon</span>
+          <a href="/generate" style={{ fontSize: '0.85rem', color: '#fff', background: '#111', padding: '6px 16px', borderRadius: '8px', textDecoration: 'none', fontWeight: '600' }}>Try it free</a>
         </div>
       </nav>
 
@@ -25,27 +25,45 @@ export default function Home() {
           Describe any tattoo, see it rendered on your actual skin, download a printable stencil to take to your artist. No subscription. No commitment.
         </p>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#f5f5f5', borderRadius: '8px', padding: '8px 20px', marginBottom: '2rem' }}>
-          <span style={{ fontSize: '1.3rem', fontWeight: '700', color: '#111' }}>$1.99</span>
+          <span style={{ fontSize: '1.3rem', fontWeight: '700', color: '#111' }}>$2.99</span>
           <span style={{ fontSize: '0.85rem', color: '#666' }}>once — generate, preview, stencil, done</span>
         </div>
 
-        {/* Waitlist form */}
-        <div style={{ display: 'flex', gap: '8px', maxWidth: '420px', margin: '0 auto' }}>
-          <input
-            type="email"
-            placeholder="your@email.com"
-            style={{ flex: 1, height: '44px', padding: '0 14px', fontSize: '0.95rem', border: '1px solid #ddd', borderRadius: '8px', outline: 'none' }}
-          />
-          <button
-            style={{ height: '44px', padding: '0 22px', fontSize: '0.95rem', fontWeight: '600', background: '#111', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', whiteSpace: 'nowrap' }}
-          >
-            Join waitlist
-          </button>
+        {/* CTA buttons */}
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+          <a href="/generate" style={{
+            display: 'inline-block',
+            height: '48px',
+            lineHeight: '48px',
+            padding: '0 28px',
+            fontSize: '1rem',
+            fontWeight: '600',
+            background: '#111',
+            color: '#fff',
+            borderRadius: '10px',
+            textDecoration: 'none',
+          }}>
+            ✦ Try it free
+          </a>
+          <a href="/pricing" style={{
+            display: 'inline-block',
+            height: '48px',
+            lineHeight: '48px',
+            padding: '0 28px',
+            fontSize: '1rem',
+            color: '#555',
+            background: '#f5f5f5',
+            borderRadius: '10px',
+            textDecoration: 'none',
+            border: '1px solid #e5e5e5',
+          }}>
+            See pricing
+          </a>
         </div>
-        <p style={{ fontSize: '0.78rem', color: '#aaa', marginTop: '0.75rem' }}>Be first to know when we launch. No spam.</p>
+        <p style={{ fontSize: '0.78rem', color: '#aaa' }}>Free to try — no credit card required</p>
       </section>
 
-      {/* Hero image — AI generated tattoo showcase */}
+      {/* Hero image */}
       <section style={{ margin: '0 -1.5rem 0', position: 'relative' }}>
         <img
           src="/dragon-tattoo.png"
