@@ -67,7 +67,6 @@ const COLOR_MODES = [
   { id: 'full-colour', label: '🎨 Full colour', free: false, geekOnly: true },
 ]
 
-// Large rotating pool — 6 random ones shown each page load
 const ALL_PROMPT_SUGGESTIONS = [
   'Geometric wolf head with mandala patterns',
   'Fine line lotus flower with moon phases',
@@ -114,7 +113,13 @@ const LOADING_MESSAGES = [
   'Almost ready...',
 ]
 
+const TEMP_PASSWORD = 'zaheer123'
+
 export default function GeneratePage() {
+  const [unlocked, setUnlocked] = useState(false)
+  const [passwordInput, setPasswordInput] = useState('')
+  const [passwordError, setPasswordError] = useState(false)
+
   const [prompt, setPrompt] = useState('')
   const [selectedModel, setSelectedModel] = useState('gpt-image-2')
   const [selectedStyle, setSelectedStyle] = useState('Fine Line')
@@ -135,6 +140,8 @@ export default function GeneratePage() {
 
   useEffect(() => {
     setSuggestions(getRandomSuggestions(ALL_PROMPT_SUGGESTIONS, 6))
+    const saved = sessionStorage.getItem('aigeek_unlocked')
+    if (saved === 'true') setUnlocked(true)
   }, [])
 
   useEffect(() => {
@@ -159,6 +166,17 @@ export default function GeneratePage() {
     }
     return () => clearInterval(interval)
   }, [isGenerating])
+
+  const handlePasswordSubmit = () => {
+    if (passwordInput === TEMP_PASSWORD) {
+      setUnlocked(true)
+      sessionStorage.setItem('aigeek_unlocked', 'true')
+      setPasswordError(false)
+    } else {
+      setPasswordError(true)
+      setPasswordInput('')
+    }
+  }
 
   const handleModelClick = (model) => {
     if (model.free) {
@@ -212,6 +230,56 @@ export default function GeneratePage() {
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  // Password gate screen
+  if (!unlocked) {
+    return (
+      <main style={{ fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '680px', margin: '0 auto', padding: '0 1.5rem' }}>
+        <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 0', borderBottom: '1px solid #f0f0f0' }}>
+          <a href="/" style={{ fontWeight: '600', fontSize: '1.1rem', letterSpacing: '-0.02em', textDecoration: 'none', color: '#111' }}>aigeek.ink</a>
+        </nav>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', textAlign: 'center' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>🔒</div>
+          <h1 style={{ fontSize: '1.5rem', fontWeight: '700', color: '#111', marginBottom: '0.5rem' }}>Coming Soon</h1>
+          <p style={{ fontSize: '0.95rem', color: '#666', marginBottom: '2rem', lineHeight: '1.6', maxWidth: '340px' }}>
+            We're putting the finishing touches on something obsession-worthy. Enter the access code to preview.
+          </p>
+          <div style={{ display: 'flex', gap: '8px', width: '100%', maxWidth: '320px' }}>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()}
+              placeholder="Access code"
+              style={{
+                flex: 1, height: '44px', padding: '0 14px',
+                fontSize: '0.95rem', border: passwordError ? '1px solid #dc2626' : '1px solid #ddd',
+                borderRadius: '8px', outline: 'none',
+                fontFamily: 'system-ui, -apple-system, sans-serif',
+              }}
+            />
+            <button
+              onClick={handlePasswordSubmit}
+              style={{
+                height: '44px', padding: '0 20px',
+                background: '#111', color: '#fff',
+                border: 'none', borderRadius: '8px',
+                fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer',
+              }}
+            >
+              Enter
+            </button>
+          </div>
+          {passwordError && (
+            <p style={{ fontSize: '0.82rem', color: '#dc2626', marginTop: '0.5rem' }}>Incorrect code. Try again.</p>
+          )}
+          <p style={{ fontSize: '0.78rem', color: '#aaa', marginTop: '2rem' }}>
+            <a href="/" style={{ color: '#aaa', textDecoration: 'none' }}>← Back to aigeek.ink</a>
+          </p>
+        </div>
+      </main>
+    )
   }
 
   return (
@@ -364,7 +432,7 @@ export default function GeneratePage() {
           <a href="/privacy" style={{ fontSize: '0.82rem', color: '#666', textDecoration: 'none' }}>Privacy</a>
           <a href="/refund" style={{ fontSize: '0.82rem', color: '#666', textDecoration: 'none' }}>Refund</a>
         </div>
-        <p style={{ fontSize: '0.78rem', color: '#aaa', textAlign: 'center' }}>2026 aigeek.ink</p>
+        <p style={{ fontSize: '0.78rem', color: '#aaa', textAlign: 'center' }}>© 2026 aigeek.ink</p>
       </footer>
 
     </main>
