@@ -17,76 +17,50 @@ export default function Home() {
           AI Tattoo Planning Tool
         </div>
         <h1 style={{ fontSize: '2.2rem', fontWeight: '700', lineHeight: '1.2', letterSpacing: '-0.03em', marginBottom: '1.25rem', color: '#111' }}>
-          Generate your tattoo.<br />
+          Design your next obsession.<br />
           <span style={{ fontStyle: 'italic', fontWeight: '400' }}>See it on your skin.</span><br />
-          Walk in prepared.
+          Walk in with your mind made up.
         </h1>
         <p style={{ fontSize: '1.05rem', color: '#555', lineHeight: '1.7', maxWidth: '480px', margin: '0 auto 2rem' }}>
-          Describe any tattoo, see it rendered on your actual skin, download a printable stencil to take to your artist. No subscription. No commitment.
+          Design your next obsession. See it on your skin. Walk in with your mind made up.
         </p>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: '#f5f5f5', borderRadius: '8px', padding: '8px 20px', marginBottom: '2rem' }}>
           <span style={{ fontSize: '1.3rem', fontWeight: '700', color: '#111' }}>$2.99</span>
-          <span style={{ fontSize: '0.85rem', color: '#666' }}>once — generate, preview, stencil, done</span>
+          <span style={{ fontSize: '0.85rem', color: '#666' }}>Pay once — generate, preview on skin, stencil, done</span>
         </div>
 
         {/* CTA buttons */}
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
           <a href="/generate" style={{
-            display: 'inline-block',
-            height: '48px',
-            lineHeight: '48px',
-            padding: '0 28px',
-            fontSize: '1rem',
-            fontWeight: '600',
-            background: '#111',
-            color: '#fff',
-            borderRadius: '10px',
-            textDecoration: 'none',
+            display: 'inline-block', height: '48px', lineHeight: '48px',
+            padding: '0 28px', fontSize: '1rem', fontWeight: '600',
+            background: '#111', color: '#fff', borderRadius: '10px', textDecoration: 'none',
           }}>
             ✦ Try it free
           </a>
           <a href="/pricing" style={{
-            display: 'inline-block',
-            height: '48px',
-            lineHeight: '48px',
-            padding: '0 28px',
-            fontSize: '1rem',
-            color: '#555',
-            background: '#f5f5f5',
-            borderRadius: '10px',
-            textDecoration: 'none',
+            display: 'inline-block', height: '48px', lineHeight: '48px',
+            padding: '0 28px', fontSize: '1rem', color: '#555',
+            background: '#f5f5f5', borderRadius: '10px', textDecoration: 'none',
             border: '1px solid #e5e5e5',
           }}>
             See pricing
           </a>
         </div>
-        <p style={{ fontSize: '0.78rem', color: '#aaa' }}>Free to try — no credit card required</p>
+        <p style={{ fontSize: '0.78rem', color: '#aaa' }}>Free to try — no card required · No subscription. Ever.</p>
       </section>
 
       {/* Hero image */}
       <section style={{ margin: '0 -1.5rem 0', position: 'relative' }}>
         <img
           src="/dragon-tattoo.png"
-          alt="AI-generated cyberpunk dragon back tattoo — created with aigeek.ink"
-          style={{
-            width: '100%',
-            height: '420px',
-            objectFit: 'cover',
-            objectPosition: 'center 20%',
-            display: 'block',
-          }}
+          alt="AI-generated tattoo design created with aigeek.ink"
+          style={{ width: '100%', height: '420px', objectFit: 'cover', objectPosition: 'center 20%', display: 'block' }}
         />
         <div style={{
-          position: 'absolute',
-          bottom: '1rem',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'rgba(0,0,0,0.65)',
-          color: '#fff',
-          fontSize: '0.78rem',
-          padding: '5px 14px',
-          borderRadius: '999px',
-          whiteSpace: 'nowrap',
+          position: 'absolute', bottom: '1rem', left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: '0.78rem',
+          padding: '5px 14px', borderRadius: '999px', whiteSpace: 'nowrap',
           backdropFilter: 'blur(4px)',
         }}>
           ✦ AI-generated with aigeek.ink
@@ -123,7 +97,7 @@ export default function Home() {
       {/* Privacy */}
       <section style={{ background: '#fafafa', borderRadius: '12px', padding: '1.5rem', margin: '0 0 2rem', border: '1px solid #f0f0f0' }}>
         <p style={{ fontSize: '0.82rem', color: '#666', lineHeight: '1.7', textAlign: 'center', margin: 0 }}>
-          <strong style={{ color: '#333' }}>Your privacy matters.</strong> Body photos are auto-deleted after 72 hours. We never sell or share your data. You can delete uploads anytime. We do not use your photos to train AI models.
+          <strong style={{ color: '#333' }}>Your privacy, your call.</strong> Body photos are private by default — auto-deleted in 72 hours, never shared without your explicit permission. Your AI designs belong to you. Share them with the world only when you choose to.
         </p>
       </section>
 
@@ -135,7 +109,7 @@ export default function Home() {
           <a href="/privacy" style={{ fontSize: '0.82rem', color: '#666', textDecoration: 'none' }}>Privacy Policy</a>
           <a href="/refund" style={{ fontSize: '0.82rem', color: '#666', textDecoration: 'none' }}>Refund Policy</a>
         </div>
-        <p style={{ fontSize: '0.78rem', color: '#aaa', textAlign: 'center' }}>© 2026 aigeek.ink — AI tattoo planning tool</p>
+        <p style={{ fontSize: '0.78rem', color: '#aaa', textAlign: 'center' }}>© 2026 aigeek.ink — design your next obsession</p>
       </footer>
 
     </main>
