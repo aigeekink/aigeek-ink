@@ -157,10 +157,10 @@ async function generateWithIdeogram(engineeredPrompt, imageSize) {
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}))
-    throw new Error(error.error || error.message || `Ideogram generation failed: ${response.status}`)
+    const errorText = await response.text().catch(() => '')
+    throw new Error(`Ideogram ${response.status}: ${errorText}`)
   }
-
+  
   const data = await response.json()
   return data.data[0].url
 }
