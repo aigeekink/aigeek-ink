@@ -29,11 +29,18 @@ const SIZE_RULES = {
   large: 'intricate detail allowed, strong central element with supporting detail',
 }
 
-// Color rules
+// Color rules for standard models
 const COLOR_RULES = {
   'black-ink': 'black ink line art only, pure black on white, absolutely no colour, no shading, no grey tones',
   'black-grey': 'black and grey ink only, monochromatic shading allowed, absolutely no colour',
   'full-colour': 'full colour with bold black outlines enclosing all colour fills, traditional flash tattoo style',
+}
+
+// Ideogram-specific color rules — lettering needs different instructions
+const IDEOGRAM_COLOR_RULES = {
+  'black-ink': 'pure black ink on white background, no colour, no shading, stark high contrast',
+  'black-grey': 'black and grey ink, dimensional shading and shadow effects allowed, monochromatic depth, white background',
+  'full-colour': 'vibrant coloured lettering with elegant ink accents, gold fills or deep jewel-tone colour with strong black outlines, ornate coloured tattoo script, white background',
 }
 
 function resolveComposition(placement, customPlacement) {
@@ -51,7 +58,9 @@ const MODEL_PROMPTS = {
 
   'seedream-5': (vars) => `Artistic tattoo concept illustration. Subject: ${vars.userPrompt}. Style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.colorRule}. Rich detailed artwork, pure white background #FFFFFF no texture no grain no paper effect, one isolated design centered with clear margins, suitable for tattoo artist reference.`.trim(),
 
-  'ideogram-3': (vars) => `Tattoo lettering design. Text: ${vars.userPrompt}. Style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.colorRule}. Clean elegant typography, transparent background, exact text preserved, one centered lettering design, no extra words, no decorative background.`.trim(),
+  // Ideogram uses ideogramColorRule instead of colorRule
+  // Text is quoted to enforce exact rendering
+  'ideogram-3': (vars) => `Tattoo lettering design. Render EXACTLY this text and nothing else: "${vars.userPrompt}". Lettering style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.ideogramColorRule}. Pure white background, centered with wide clear margins on all edges, exact text only — do not add, change, or invent any words, one complete lettering design only.`.trim(),
 }
 
 // GPT Image 2 via OpenAI
@@ -134,8 +143,9 @@ async function generateWithSeedream(engineeredPrompt, imageSize) {
   return data.images[0].url
 }
 
-// Ideogram V3 via Ideogram API — multipart/form-data
-async function generateWithIdeogram(engineeredPrompt, imageSize) {
+// Ideogram V3 — multipart/form-data
+// colorMode passed in to control style_type and negative prompts
+async function generateWithIdeogram(engineeredPrompt, imageSize, colorMode) {
   const aspectRatio = imageSize === '1024x1536' ? '2x3'
     : imageSize === '1536x1024' ? '3x2'
     : '1x1'
@@ -145,8 +155,24 @@ async function generateWithIdeogram(engineeredPrompt, imageSize) {
   formData.append('aspect_ratio', aspectRatio)
   formData.append('magic_prompt', 'OFF')
   formData.append('num_images', '1')
-  formData.append('style_type', 'DESIGN')
   formData.append('rendering_speed', 'TURBO')
+
+  // Full colour uses GENERAL style to allow colour output
+  // Black ink and black-grey use DESIGN for clean lettering
+  if (colorMode === 'full-colour') {
+    formData.append('style_type', 'GENERAL')
+  } else {
+    formData.append('style_type', 'DESIGN')
+  }
+
+  // Black ink: block all shading and colour
+  // Black-grey: no negative prompt — let Ideogram add natural shading freely
+  // Full colour: only block unwanted backgrounds
+  if (colorMode === 'black-ink') {
+    formData.append('negative_prompt', 'color, colours, colorful, vibrant, painted, grey shading, gradients, shadows')
+  } else if (colorMode === 'full-colour') {
+    formData.append('negative_prompt', 'grey background, textured background, paper texture, plain black only')
+  }
 
   const response = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
     method: 'POST',
@@ -160,7 +186,7 @@ async function generateWithIdeogram(engineeredPrompt, imageSize) {
     const errorText = await response.text().catch(() => '')
     throw new Error(`Ideogram ${response.status}: ${errorText}`)
   }
-  
+
   const data = await response.json()
   return data.data[0].url
 }
@@ -203,6 +229,7 @@ export async function POST(request) {
     const composition = resolveComposition(placement, customPlacement)
     const sizeRule = SIZE_RULES[size] || SIZE_RULES.medium
     const colorRule = COLOR_RULES[colorMode] || COLOR_RULES['black-ink']
+    const ideogramColorRule = IDEOGRAM_COLOR_RULES[colorMode] || IDEOGRAM_COLOR_RULES['black-ink']
 
     const promptBuilder = MODEL_PROMPTS[resolvedModel] || MODEL_PROMPTS['gpt-image-2']
     const engineeredPrompt = promptBuilder({
@@ -211,6 +238,7 @@ export async function POST(request) {
       composition,
       sizeRule,
       colorRule,
+      ideogramColorRule,
     })
 
     // Image size based on placement
@@ -235,7 +263,7 @@ export async function POST(request) {
         imageUrl = await generateWithSeedream(engineeredPrompt, imageSize)
         break
       case 'ideogram-3':
-        imageUrl = await generateWithIdeogram(engineeredPrompt, imageSize)
+        imageUrl = await generateWithIdeogram(engineeredPrompt, imageSize, colorMode)
         break
       default:
         imageUrl = await generateWithGPT(engineeredPrompt, imageSize)
