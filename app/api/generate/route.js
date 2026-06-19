@@ -136,9 +136,9 @@ async function generateWithSeedream(engineeredPrompt, imageSize) {
 
 // Ideogram V3 via Ideogram API — multipart/form-data
 async function generateWithIdeogram(engineeredPrompt, imageSize) {
-  const aspectRatio = imageSize === '1024x1536' ? 'ASPECT_2_3'
-    : imageSize === '1536x1024' ? 'ASPECT_3_2'
-    : 'ASPECT_1_1'
+  const aspectRatio = imageSize === '1024x1536' ? '2x3'
+    : imageSize === '1536x1024' ? '3x2'
+    : '1x1'
 
   const formData = new FormData()
   formData.append('prompt', engineeredPrompt)
