@@ -228,7 +228,7 @@ export async function POST(request) {
       n: 1,
       size: imageSize,
       quality: 'low',
-      background: 'transparent',
+      background: 'auto',
       output_format: 'png',
     })
 
@@ -265,11 +265,16 @@ export async function POST(request) {
     console.error('Generation error:', error)
 
     if (error?.status === 400) {
-      return NextResponse.json(
-        { error: 'Your prompt was flagged by content filters. Please rephrase your tattoo idea.' },
-        { status: 400 }
-      )
-    }
+  return NextResponse.json(
+    {
+      error: 'Generation failed.',
+      details: error.message,
+      code: error.code,
+      param: error.param,
+    },
+    { status: 400 }
+  )
+}
     if (error?.status === 429) {
       return NextResponse.json(
         { error: 'Too many requests. Please wait a moment and try again.' },
