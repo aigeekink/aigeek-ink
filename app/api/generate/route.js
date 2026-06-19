@@ -51,7 +51,7 @@ const MODEL_PROMPTS = {
 
   'seedream-5': (vars) => `Artistic tattoo concept illustration. Subject: ${vars.userPrompt}. Style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.colorRule}. Rich detailed artwork, pure white background #FFFFFF no texture no grain no paper effect, one isolated design centered with clear margins, suitable for tattoo artist reference.`.trim(),
 
-  'ideogram-3': (vars) => `Tattoo lettering design. Text: ${vars.userPrompt}. Style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.colorRule}. Clean elegant typography, isolated on white background, exact text preserved, one centered lettering design, no extra words.`.trim(),
+  'ideogram-3': (vars) => `Tattoo lettering design. Text: ${vars.userPrompt}. Style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.colorRule}. Clean elegant typography, transparent background, exact text preserved, one centered lettering design, no extra words, no decorative background.`.trim(),
 }
 
 // GPT Image 2 via OpenAI
@@ -73,11 +73,9 @@ async function generateWithGPT(engineeredPrompt, imageSize) {
 }
 
 // FLUX Pro v1.1 via Fal.ai
-// Passes negative_prompt to enforce colour mode strictly
 async function generateWithFLUX(engineeredPrompt, imageSize, colorMode) {
   const [width, height] = imageSize.split('x').map(Number)
 
-  // FLUX requires explicit negative prompts to enforce colour restrictions
   const negativePrompt = colorMode === 'black-ink'
     ? 'color, colours, colorful, vibrant, painted, watercolor, red, blue, green, yellow, pink, purple, orange, background scene, ink splatter, brush strokes, cropped edges, cut off, bleeding edges'
     : colorMode === 'black-grey'
@@ -109,7 +107,7 @@ async function generateWithFLUX(engineeredPrompt, imageSize, colorMode) {
   return data.images[0].url
 }
 
-// Seedream v3 via Fal.ai — correct endpoint with background fix
+// Seedream v3 via Fal.ai
 async function generateWithSeedream(engineeredPrompt, imageSize) {
   const [width, height] = imageSize.split('x').map(Number)
 
@@ -136,31 +134,32 @@ async function generateWithSeedream(engineeredPrompt, imageSize) {
   return data.images[0].url
 }
 
-// Ideogram v3 via Ideogram API
+// Ideogram V3 via Ideogram API — correct endpoint + transparent background
 async function generateWithIdeogram(engineeredPrompt, imageSize) {
-  const response = await fetch('https://api.ideogram.ai/generate', {
+  const aspectRatio = imageSize === '1024x1536' ? 'ASPECT_2_3'
+    : imageSize === '1536x1024' ? 'ASPECT_3_2'
+    : 'ASPECT_1_1'
+
+  // Use generate-transparent endpoint for clean isolated lettering
+  const response = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate-transparent', {
     method: 'POST',
     headers: {
       'Api-Key': process.env.IDEOGRAM_API_KEY,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      image_request: {
-        prompt: engineeredPrompt,
-        model: 'V_3',
-        magic_prompt_option: 'OFF',
-        num_images: 1,
-        aspect_ratio: imageSize === '1024x1536' ? 'ASPECT_2_3'
-          : imageSize === '1536x1024' ? 'ASPECT_3_2'
-          : 'ASPECT_1_1',
-        style_type: 'DESIGN',
-      },
+      prompt: engineeredPrompt,
+      aspect_ratio: aspectRatio,
+      magic_prompt_option: 'OFF',
+      num_images: 1,
+      style_type: 'DESIGN',
+      rendering_speed: 'TURBO',
     }),
   })
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
-    throw new Error(error.error || `Ideogram generation failed: ${response.status}`)
+    throw new Error(error.error || error.message || `Ideogram generation failed: ${response.status}`)
   }
 
   const data = await response.json()
