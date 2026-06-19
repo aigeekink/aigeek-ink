@@ -20,7 +20,7 @@ const MODELS = [
     description: 'Best for dramatic, bold, high-impact tattoo concepts with strong shadows.',
     recommended: 'Blackwork, dark art, neo-traditional, forearm/chest pieces',
     credits: 1,
-    free: false,
+    free: true,
     styles: ['Heavy Blackwork', 'Dark Art', 'Tribal', 'Neo-Traditional', 'Realistic Dark', 'Japanese Bold'],
   },
   {
@@ -30,7 +30,7 @@ const MODELS = [
     description: 'Best for visually rich, creative, Pinterest-style tattoo inspiration.',
     recommended: 'Fantasy, surreal, cyberpunk, painterly, experimental',
     credits: 1,
-    free: false,
+    free: true,
     styles: ['Cyberpunk', 'Fantasy', 'Surreal', 'Floral Painterly', 'Japanese', 'Illustrative'],
   },
   {
@@ -40,7 +40,7 @@ const MODELS = [
     description: 'Best for names, dates, quotes, Roman numerals, and typography tattoos.',
     recommended: 'Script tattoos, memorial text, Arabic/English lettering, names',
     credits: 2,
-    free: false,
+    free: true,
     styles: ['Classic Script', 'Bold Block', 'Fine Elegant', 'Gothic', 'Arabic Calligraphy', 'Roman Numerals'],
   },
 ]
@@ -64,7 +64,7 @@ const SIZES = [
 const COLOR_MODES = [
   { id: 'black-ink', label: '⬛ Black ink', free: true },
   { id: 'black-grey', label: '🌑 Black & grey', free: true },
-  { id: 'full-colour', label: '🎨 Full colour', free: false, geekOnly: true },
+  { id: 'full-colour', label: '🎨 Full colour', free: true, geekOnly: true },
 ]
 
 const ALL_PROMPT_SUGGESTIONS = [
