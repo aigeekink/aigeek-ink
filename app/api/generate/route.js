@@ -31,9 +31,9 @@ const SIZE_RULES = {
 
 // Color rules
 const COLOR_RULES = {
-  'black-ink': 'black ink line art on white background, no shading, no colour',
-  'black-grey': 'black and grey ink, monochromatic shading, no colour',
-  'full-colour': 'full colour with bold black outlines enclosing all colour fills, traditional flash style',
+  'black-ink': 'black ink line art only, pure black on white, absolutely no colour, no shading, no grey tones',
+  'black-grey': 'black and grey ink only, monochromatic shading allowed, absolutely no colour',
+  'full-colour': 'full colour with bold black outlines enclosing all colour fills, traditional flash tattoo style',
 }
 
 function resolveComposition(placement, customPlacement) {
@@ -47,9 +47,9 @@ function resolveComposition(placement, customPlacement) {
 const MODEL_PROMPTS = {
   'gpt-image-2': (vars) => `Professional tattoo flash art design. Subject: ${vars.userPrompt}. Style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.colorRule}. Single isolated design, plain white background, clean bold outlines, high contrast, centered with margin around edges. One complete design only.`.trim(),
 
-  'flux-2-pro': (vars) => `Bold tattoo design artwork. Subject: ${vars.userPrompt}. Style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.colorRule}. Strong confident linework, dramatic contrast, isolated on white background, one complete centered design, no background scene.`.trim(),
+  'flux-2-pro': (vars) => `Tattoo design artwork. Subject: ${vars.userPrompt}. Style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.colorRule}. Strong confident linework, isolated design centered with wide clear margins on all sides, no background scene, no ink splatter, no brush strokes, one complete contained design, design must not touch or go beyond image edges.`.trim(),
 
-  'seedream-5': (vars) => `Artistic tattoo concept illustration. Subject: ${vars.userPrompt}. Style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.colorRule}. Rich detailed artwork, clean light background, one isolated design centered with clear margins, suitable for tattoo artist reference.`.trim(),
+  'seedream-5': (vars) => `Artistic tattoo concept illustration. Subject: ${vars.userPrompt}. Style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.colorRule}. Rich detailed artwork, pure white background #FFFFFF no texture no grain no paper effect, one isolated design centered with clear margins, suitable for tattoo artist reference.`.trim(),
 
   'ideogram-3': (vars) => `Tattoo lettering design. Text: ${vars.userPrompt}. Style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.colorRule}. Clean elegant typography, isolated on white background, exact text preserved, one centered lettering design, no extra words.`.trim(),
 }
@@ -73,8 +73,16 @@ async function generateWithGPT(engineeredPrompt, imageSize) {
 }
 
 // FLUX Pro v1.1 via Fal.ai
-async function generateWithFLUX(engineeredPrompt, imageSize) {
+// Passes negative_prompt to enforce colour mode strictly
+async function generateWithFLUX(engineeredPrompt, imageSize, colorMode) {
   const [width, height] = imageSize.split('x').map(Number)
+
+  // FLUX requires explicit negative prompts to enforce colour restrictions
+  const negativePrompt = colorMode === 'black-ink'
+    ? 'color, colours, colorful, vibrant, painted, watercolor, red, blue, green, yellow, pink, purple, orange, background scene, ink splatter, brush strokes, cropped edges, cut off, bleeding edges'
+    : colorMode === 'black-grey'
+    ? 'color, colours, colorful, vibrant, painted, red, blue, green, yellow, pink, purple, orange, background scene, ink splatter, brush strokes, cropped edges, cut off, bleeding edges'
+    : 'background scene, ink splatter, brush strokes, cropped edges, cut off, bleeding edges'
 
   const response = await fetch('https://fal.run/fal-ai/flux-pro/v1.1', {
     method: 'POST',
@@ -84,6 +92,7 @@ async function generateWithFLUX(engineeredPrompt, imageSize) {
     },
     body: JSON.stringify({
       prompt: engineeredPrompt,
+      negative_prompt: negativePrompt,
       image_size: { width, height },
       num_images: 1,
       output_format: 'png',
@@ -100,7 +109,7 @@ async function generateWithFLUX(engineeredPrompt, imageSize) {
   return data.images[0].url
 }
 
-// Seedream v3 via Fal.ai — correct endpoint
+// Seedream v3 via Fal.ai — correct endpoint with background fix
 async function generateWithSeedream(engineeredPrompt, imageSize) {
   const [width, height] = imageSize.split('x').map(Number)
 
@@ -114,6 +123,7 @@ async function generateWithSeedream(engineeredPrompt, imageSize) {
       prompt: engineeredPrompt,
       image_size: { width, height },
       num_images: 1,
+      guidance_scale: 7.5,
     }),
   })
 
@@ -221,7 +231,7 @@ export async function POST(request) {
         imageUrl = await generateWithGPT(engineeredPrompt, imageSize)
         break
       case 'flux-2-pro':
-        imageUrl = await generateWithFLUX(engineeredPrompt, imageSize)
+        imageUrl = await generateWithFLUX(engineeredPrompt, imageSize, colorMode)
         break
       case 'seedream-5':
         imageUrl = await generateWithSeedream(engineeredPrompt, imageSize)
