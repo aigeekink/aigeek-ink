@@ -36,11 +36,11 @@ const COLOR_RULES = {
   'full-colour': 'full colour with bold black outlines enclosing all colour fills, traditional flash tattoo style',
 }
 
-// Ideogram-specific color rules — lettering needs different instructions
+// Ideogram-specific color rules
 const IDEOGRAM_COLOR_RULES = {
-  'black-ink': 'pure black ink on white background, no colour, no shading, stark high contrast',
-  'black-grey': 'black and grey ink, dimensional shading and shadow effects allowed, monochromatic depth, white background',
-  'full-colour': 'vibrant coloured lettering with elegant ink accents, gold fills or deep jewel-tone colour with strong black outlines, ornate coloured tattoo script, white background',
+  'black-ink': 'pure black ink only, flat solid white background #FFFFFF, no shading, no gradients, no texture, stark high contrast',
+  'black-grey': 'black and grey ink, dimensional shading and shadow effects on the lettering only, solid flat white background #FFFFFF, no background texture or gradient',
+  'full-colour': 'vibrant coloured lettering with elegant ink accents, gold fills or deep jewel-tone colour with strong black outlines, ornate coloured tattoo script, solid flat white background #FFFFFF',
 }
 
 function resolveComposition(placement, customPlacement) {
@@ -58,9 +58,7 @@ const MODEL_PROMPTS = {
 
   'seedream-5': (vars) => `Artistic tattoo concept illustration. Subject: ${vars.userPrompt}. Style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.colorRule}. Rich detailed artwork, pure white background #FFFFFF no texture no grain no paper effect, one isolated design centered with clear margins, suitable for tattoo artist reference.`.trim(),
 
-  // Ideogram uses ideogramColorRule instead of colorRule
-  // Text is quoted to enforce exact rendering
-  'ideogram-3': (vars) => `Tattoo lettering design. Render EXACTLY this text and nothing else: "${vars.userPrompt}". Lettering style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.ideogramColorRule}. Pure white background, centered with wide clear margins on all edges, exact text only — do not add, change, or invent any words, one complete lettering design only.`.trim(),
+  'ideogram-3': (vars) => `Tattoo lettering design. Render EXACTLY this text: "${vars.userPrompt}". Lettering style: ${vars.style}. Layout: ${vars.composition}. Size: ${vars.sizeRule}. Ink: ${vars.ideogramColorRule}. CRITICAL: solid flat pure white background only, no gradients, no texture, no paper grain, no metallic effect, no vignette. Centered with wide clear margins. Exact text only — do not add or change any words.`.trim(),
 }
 
 // GPT Image 2 via OpenAI
@@ -143,8 +141,7 @@ async function generateWithSeedream(engineeredPrompt, imageSize) {
   return data.images[0].url
 }
 
-// Ideogram V3 — multipart/form-data
-// colorMode passed in to control style_type and negative prompts
+// Ideogram V3 — regular endpoint with aggressive white background enforcement
 async function generateWithIdeogram(engineeredPrompt, imageSize, colorMode) {
   const aspectRatio = imageSize === '1024x1536' ? '2x3'
     : imageSize === '1536x1024' ? '3x2'
@@ -157,21 +154,15 @@ async function generateWithIdeogram(engineeredPrompt, imageSize, colorMode) {
   formData.append('num_images', '1')
   formData.append('rendering_speed', 'TURBO')
 
-  // Full colour uses GENERAL style to allow colour output
-  // Black ink and black-grey use DESIGN for clean lettering
   if (colorMode === 'full-colour') {
     formData.append('style_type', 'GENERAL')
+    formData.append('negative_prompt', 'grey background, textured background, paper texture, gradient background, metallic background, vignette')
   } else {
     formData.append('style_type', 'DESIGN')
-  }
-
-  // Black ink: block all shading and colour
-  // Black-grey: no negative prompt — let Ideogram add natural shading freely
-  // Full colour: only block unwanted backgrounds
-  if (colorMode === 'black-ink') {
-    formData.append('negative_prompt', 'color, colours, colorful, vibrant, painted, grey shading, gradients, shadows')
-  } else if (colorMode === 'full-colour') {
-    formData.append('negative_prompt', 'grey background, textured background, paper texture, plain black only')
+    formData.append('negative_prompt', colorMode === 'black-ink'
+      ? 'color, colours, colorful, vibrant, grey shading, gradients, shadows, textured background, paper texture, gradient background, metallic, vignette'
+      : 'color, colours, colorful, vibrant, textured background, paper texture, gradient background, metallic background, vignette'
+    )
   }
 
   const response = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
@@ -205,7 +196,6 @@ export async function POST(request) {
       colorMode = 'black-ink',
     } = body
 
-    // Validation
     if (!prompt || prompt.trim().length === 0) {
       return NextResponse.json({ error: 'Please describe your tattoo idea.' }, { status: 400 })
     }
@@ -241,7 +231,6 @@ export async function POST(request) {
       ideogramColorRule,
     })
 
-    // Image size based on placement
     let imageSize = '1024x1024'
     if (['forearm', 'ankle', 'spine'].includes(placement)) {
       imageSize = '1024x1536'
@@ -249,7 +238,6 @@ export async function POST(request) {
       imageSize = '1536x1024'
     }
 
-    // Route to correct API
     let imageUrl = ''
 
     switch (resolvedModel) {
@@ -289,16 +277,10 @@ export async function POST(request) {
     console.error('Generation error:', error)
 
     if (error?.status === 429) {
-      return NextResponse.json(
-        { error: 'Too many requests. Please wait a moment and try again.' },
-        { status: 429 }
-      )
+      return NextResponse.json({ error: 'Too many requests. Please wait a moment and try again.' }, { status: 429 })
     }
     if (error?.status === 401) {
-      return NextResponse.json(
-        { error: 'API configuration error. Please contact support.' },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: 'API configuration error. Please contact support.' }, { status: 500 })
     }
 
     return NextResponse.json(
