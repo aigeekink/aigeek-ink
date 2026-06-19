@@ -1,7 +1,6 @@
 import OpenAI from 'openai'
 import { NextResponse } from 'next/server'
 
-// API clients
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
@@ -73,7 +72,7 @@ async function generateWithGPT(engineeredPrompt, imageSize) {
   throw new Error('No valid image data from OpenAI')
 }
 
-// FLUX 2 Pro via Fal.ai
+// FLUX Pro v1.1 via Fal.ai
 async function generateWithFLUX(engineeredPrompt, imageSize) {
   const [width, height] = imageSize.split('x').map(Number)
 
@@ -93,19 +92,19 @@ async function generateWithFLUX(engineeredPrompt, imageSize) {
   })
 
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.detail || 'FLUX generation failed')
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || `FLUX generation failed: ${response.status}`)
   }
 
   const data = await response.json()
   return data.images[0].url
 }
 
-// Seedream 5 via Fal.ai
+// Seedream v3 via Fal.ai — correct endpoint
 async function generateWithSeedream(engineeredPrompt, imageSize) {
   const [width, height] = imageSize.split('x').map(Number)
 
-  const response = await fetch('https://fal.run/fal-ai/seedream-v3', {
+  const response = await fetch('https://fal.run/fal-ai/bytedance/seedream/v3/text-to-image', {
     method: 'POST',
     headers: {
       'Authorization': `Key ${process.env.FAL_API_KEY}`,
@@ -115,23 +114,20 @@ async function generateWithSeedream(engineeredPrompt, imageSize) {
       prompt: engineeredPrompt,
       image_size: { width, height },
       num_images: 1,
-      output_format: 'png',
     }),
   })
 
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.detail || 'Seedream generation failed')
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || `Seedream generation failed: ${response.status}`)
   }
 
   const data = await response.json()
   return data.images[0].url
 }
 
-// Ideogram 3 via Ideogram API
+// Ideogram v3 via Ideogram API
 async function generateWithIdeogram(engineeredPrompt, imageSize) {
-  const [width, height] = imageSize.split('x').map(Number)
-
   const response = await fetch('https://api.ideogram.ai/generate', {
     method: 'POST',
     headers: {
@@ -144,15 +140,17 @@ async function generateWithIdeogram(engineeredPrompt, imageSize) {
         model: 'V_3',
         magic_prompt_option: 'OFF',
         num_images: 1,
-        resolution: `RESOLUTION_${width}_${height}`,
+        aspect_ratio: imageSize === '1024x1536' ? 'ASPECT_2_3'
+          : imageSize === '1536x1024' ? 'ASPECT_3_2'
+          : 'ASPECT_1_1',
         style_type: 'DESIGN',
       },
     }),
   })
 
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.error || 'Ideogram generation failed')
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.error || `Ideogram generation failed: ${response.status}`)
   }
 
   const data = await response.json()
@@ -254,12 +252,6 @@ export async function POST(request) {
   } catch (error) {
     console.error('Generation error:', error)
 
-    if (error?.status === 400 || error?.message?.includes('flagged')) {
-      return NextResponse.json(
-        { error: 'Generation failed — please try rephrasing your idea.' },
-        { status: 400 }
-      )
-    }
     if (error?.status === 429) {
       return NextResponse.json(
         { error: 'Too many requests. Please wait a moment and try again.' },
