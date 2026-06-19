@@ -89,7 +89,7 @@ export default function Home() {
           whiteSpace: 'nowrap',
           backdropFilter: 'blur(4px)',
         }}>
-          ✦ AI-generated — cyberpunk dragon back piece
+          ✦ AI-generated with aigeek.ink
         </div>
       </section>
 
