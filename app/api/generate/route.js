@@ -134,27 +134,26 @@ async function generateWithSeedream(engineeredPrompt, imageSize) {
   return data.images[0].url
 }
 
-// Ideogram V3 via Ideogram API — correct endpoint + transparent background
+// Ideogram V3 via Ideogram API — multipart/form-data
 async function generateWithIdeogram(engineeredPrompt, imageSize) {
   const aspectRatio = imageSize === '1024x1536' ? 'ASPECT_2_3'
     : imageSize === '1536x1024' ? 'ASPECT_3_2'
     : 'ASPECT_1_1'
 
-  // Use generate-transparent endpoint for clean isolated lettering
-  const response = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate-transparent', {
+  const formData = new FormData()
+  formData.append('prompt', engineeredPrompt)
+  formData.append('aspect_ratio', aspectRatio)
+  formData.append('magic_prompt', 'OFF')
+  formData.append('num_images', '1')
+  formData.append('style_type', 'DESIGN')
+  formData.append('rendering_speed', 'TURBO')
+
+  const response = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
     method: 'POST',
     headers: {
       'Api-Key': process.env.IDEOGRAM_API_KEY,
-      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      prompt: engineeredPrompt,
-      aspect_ratio: aspectRatio,
-      magic_prompt_option: 'OFF',
-      num_images: 1,
-      style_type: 'DESIGN',
-      rendering_speed: 'TURBO',
-    }),
+    body: formData,
   })
 
   if (!response.ok) {
