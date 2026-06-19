@@ -9,6 +9,7 @@ const MODELS = [
     poweredBy: 'GPT Image 2',
     description: 'Best all-rounder for clean, accurate, stencil-friendly tattoo concepts.',
     recommended: 'Fine line, geometric, blackwork, meaningful custom tattoos',
+    warning: null,
     credits: 1,
     free: true,
     styles: ['Fine Line', 'Geometric', 'Blackwork', 'Minimalist', 'Neo-Traditional', 'Dotwork'],
@@ -19,6 +20,7 @@ const MODELS = [
     poweredBy: 'FLUX 2 Pro',
     description: 'Best for dramatic, bold, high-impact tattoo concepts with strong shadows.',
     recommended: 'Blackwork, dark art, neo-traditional, forearm/chest pieces',
+    warning: null,
     credits: 1,
     free: true,
     styles: ['Heavy Blackwork', 'Dark Art', 'Tribal', 'Neo-Traditional', 'Realistic Dark', 'Japanese Bold'],
@@ -29,6 +31,7 @@ const MODELS = [
     poweredBy: 'Seedream 5',
     description: 'Best for visually rich, creative, Pinterest-style tattoo inspiration.',
     recommended: 'Fantasy, surreal, cyberpunk, painterly, experimental',
+    warning: null,
     credits: 1,
     free: true,
     styles: ['Cyberpunk', 'Fantasy', 'Surreal', 'Floral Painterly', 'Japanese', 'Illustrative'],
@@ -37,8 +40,9 @@ const MODELS = [
     id: 'ideogram-3',
     name: 'Lettering Pro',
     poweredBy: 'Ideogram 3',
-    description: 'Best for names, dates, quotes, Roman numerals, and typography tattoos.',
-    recommended: 'Script tattoos, memorial text, Arabic/English lettering, names',
+    description: 'Best for text tattoos. Type the exact words you want inked.',
+    recommended: 'Names, dates, quotes, Roman numerals, script lettering',
+    warning: '✏️ Type the exact text to tattoo — e.g. "Forever Faithful" or "XII · VI · 1989"',
     credits: 2,
     free: true,
     styles: ['Classic Script', 'Bold Block', 'Fine Elegant', 'Gothic', 'Arabic Calligraphy', 'Roman Numerals'],
@@ -100,6 +104,16 @@ const ALL_PROMPT_SUGGESTIONS = [
   'Skull made entirely of fine line roses',
 ]
 
+// Separate suggestion set for Ideogram — lettering examples only
+const IDEOGRAM_SUGGESTIONS = [
+  'Forever Faithful',
+  'No Regrets',
+  'Still I Rise',
+  'XII · VI · 1989',
+  'Per Aspera Ad Astra',
+  'Only God Can Judge Me',
+]
+
 function getRandomSuggestions(pool, count) {
   const shuffled = [...pool].sort(() => Math.random() - 0.5)
   return shuffled.slice(0, count)
@@ -144,8 +158,15 @@ export default function GeneratePage() {
     if (saved === 'true') setUnlocked(true)
   }, [])
 
+  // When model changes: reset style, clear prompt, switch suggestions
   useEffect(() => {
     setSelectedStyle(currentModel.styles[0])
+    setPrompt('')
+    if (selectedModel === 'ideogram-3') {
+      setSuggestions(IDEOGRAM_SUGGESTIONS)
+    } else {
+      setSuggestions(getRandomSuggestions(ALL_PROMPT_SUGGESTIONS, 6))
+    }
   }, [selectedModel])
 
   useEffect(() => {
@@ -252,28 +273,13 @@ export default function GeneratePage() {
               onChange={(e) => setPasswordInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handlePasswordSubmit()}
               placeholder="Access code"
-              style={{
-                flex: 1, height: '44px', padding: '0 14px',
-                fontSize: '0.95rem', border: passwordError ? '1px solid #dc2626' : '1px solid #ddd',
-                borderRadius: '8px', outline: 'none',
-                fontFamily: 'system-ui, -apple-system, sans-serif',
-              }}
+              style={{ flex: 1, height: '44px', padding: '0 14px', fontSize: '0.95rem', border: passwordError ? '1px solid #dc2626' : '1px solid #ddd', borderRadius: '8px', outline: 'none', fontFamily: 'system-ui, -apple-system, sans-serif' }}
             />
-            <button
-              onClick={handlePasswordSubmit}
-              style={{
-                height: '44px', padding: '0 20px',
-                background: '#111', color: '#fff',
-                border: 'none', borderRadius: '8px',
-                fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer',
-              }}
-            >
+            <button onClick={handlePasswordSubmit} style={{ height: '44px', padding: '0 20px', background: '#111', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer' }}>
               Enter
             </button>
           </div>
-          {passwordError && (
-            <p style={{ fontSize: '0.82rem', color: '#dc2626', marginTop: '0.5rem' }}>Incorrect code. Try again.</p>
-          )}
+          {passwordError && <p style={{ fontSize: '0.82rem', color: '#dc2626', marginTop: '0.5rem' }}>Incorrect code. Try again.</p>}
           <p style={{ fontSize: '0.78rem', color: '#aaa', marginTop: '2rem' }}>
             <a href="/" style={{ color: '#aaa', textDecoration: 'none' }}>← Back to aigeek.ink</a>
           </p>
@@ -307,6 +313,7 @@ export default function GeneratePage() {
         <p style={{ fontSize: '0.95rem', color: '#555', lineHeight: '1.6' }}>Describe your idea. Our AI engineers the perfect prompt. You walk in with your mind made up.</p>
       </section>
 
+      {/* Model selector */}
       <section style={{ marginBottom: '1.75rem' }}>
         <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>1 — Choose AI model</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -321,9 +328,16 @@ export default function GeneratePage() {
             </div>
           ))}
         </div>
+        {/* Warning banner — only shows for Ideogram */}
+        {currentModel.warning && (
+          <div style={{ marginTop: '0.75rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '0.6rem 0.875rem' }}>
+            <p style={{ fontSize: '0.8rem', color: '#92400e', margin: 0 }}>{currentModel.warning}</p>
+          </div>
+        )}
         <p style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.5rem', textAlign: 'center' }}>🔒 Locked models unlock with any paid pack</p>
       </section>
 
+      {/* Style */}
       <section style={{ marginBottom: '1.75rem' }}>
         <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>2 — Choose style</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -333,11 +347,25 @@ export default function GeneratePage() {
         </div>
       </section>
 
+      {/* Prompt — label and placeholder change for Ideogram */}
       <section style={{ marginBottom: '1.75rem' }}>
-        <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>3 — Describe your tattoo idea</p>
-        <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={selectedModel === 'ideogram-3' ? 'e.g. "Forever in my heart" or "Zaheer 1989" or "XII • III • MMXX"' : 'e.g. Wolf head surrounded by geometric patterns, strong and fierce'} maxLength={500} rows={3} style={{ width: '100%', padding: '12px 14px', fontSize: '0.95rem', border: '1px solid #ddd', borderRadius: '10px', outline: 'none', resize: 'vertical', fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.6', color: '#111' }} />
+        <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>
+          {selectedModel === 'ideogram-3' ? '3 — Enter exact text to tattoo' : '3 — Describe your tattoo idea'}
+        </p>
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder={selectedModel === 'ideogram-3'
+            ? 'Type the exact words to tattoo — e.g. "Forever Faithful" or "XII · VI · 1989"'
+            : 'e.g. Wolf head surrounded by geometric patterns, strong and fierce'}
+          maxLength={500}
+          rows={3}
+          style={{ width: '100%', padding: '12px 14px', fontSize: '0.95rem', border: '1px solid #ddd', borderRadius: '10px', outline: 'none', resize: 'vertical', fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.6', color: '#111' }}
+        />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.4rem' }}>
-          <p style={{ fontSize: '0.75rem', color: '#888' }}>Just describe the idea — our AI engineers the rest</p>
+          <p style={{ fontSize: '0.75rem', color: '#888' }}>
+            {selectedModel === 'ideogram-3' ? 'Exact text only — what you type is what gets tattooed' : 'Just describe the idea — our AI engineers the rest'}
+          </p>
           <p style={{ fontSize: '0.75rem', color: prompt.length > 400 ? '#e55' : '#888' }}>{prompt.length}/500</p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '0.75rem' }}>
@@ -347,6 +375,7 @@ export default function GeneratePage() {
         </div>
       </section>
 
+      {/* Placement */}
       <section style={{ marginBottom: '1.75rem' }}>
         <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>4 — Placement</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -359,6 +388,7 @@ export default function GeneratePage() {
         )}
       </section>
 
+      {/* Size */}
       <section style={{ marginBottom: '1.75rem' }}>
         <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>5 — Approximate size</p>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -371,6 +401,7 @@ export default function GeneratePage() {
         </div>
       </section>
 
+      {/* Colour */}
       <section style={{ marginBottom: '2rem' }}>
         <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>6 — Colour mode</p>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -384,10 +415,12 @@ export default function GeneratePage() {
         </div>
       </section>
 
+      {/* Generate button */}
       <button onClick={handleGenerate} disabled={isGenerating || !prompt.trim()} style={{ width: '100%', height: '52px', background: isGenerating || !prompt.trim() ? '#ccc' : '#111', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '600', cursor: isGenerating || !prompt.trim() ? 'not-allowed' : 'pointer', marginBottom: '1rem', transition: 'background 0.2s' }}>
         {isGenerating ? '✦ Generating your tattoo...' : '✦ Generate tattoo design'}
       </button>
 
+      {/* Loading */}
       {isGenerating && (
         <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
           <div style={{ width: '100%', height: '4px', background: '#f0f0f0', borderRadius: '999px', overflow: 'hidden', marginBottom: '0.75rem' }}>
@@ -398,12 +431,14 @@ export default function GeneratePage() {
         </div>
       )}
 
+      {/* Error */}
       {error && (
         <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '10px', padding: '1rem', marginBottom: '1.5rem' }}>
           <p style={{ fontSize: '0.88rem', color: '#dc2626', margin: 0 }}>{error}</p>
         </div>
       )}
 
+      {/* Result */}
       {result && (
         <section style={{ marginBottom: '2rem' }}>
           <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>Your tattoo design</p>
