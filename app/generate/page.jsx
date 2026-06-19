@@ -45,7 +45,23 @@ const MODELS = [
     warning: '✏️ Type the exact text to tattoo — e.g. "Forever Faithful" or "XII · VI · 1989"',
     credits: 2,
     free: true,
-    styles: ['Classic Script', 'Bold Block', 'Fine Elegant', 'Gothic', 'Arabic Calligraphy', 'Roman Numerals'],
+    styles: [
+      'Classic Script',
+      'Fine Elegant Script',
+      'Bold Gothic',
+      'Old English',
+      'Blackletter',
+      'Arabic Calligraphy',
+      'Roman Numerals',
+      'Serif Bold',
+      'Minimalist Sans',
+      'Brush Lettering',
+      'Vintage Western',
+      'Ornate Decorative',
+      'Japanese Brush',
+      'Graffiti Style',
+      'Handwritten Personal',
+    ],
   },
 ]
 
@@ -104,7 +120,6 @@ const ALL_PROMPT_SUGGESTIONS = [
   'Skull made entirely of fine line roses',
 ]
 
-// Separate suggestion set for Ideogram — lettering examples only
 const IDEOGRAM_SUGGESTIONS = [
   'Only God Can Judge Me',
   'Still I Rise',
@@ -182,12 +197,11 @@ export default function GeneratePage() {
     if (saved === 'true') setUnlocked(true)
   }, [])
 
-  // When model changes: reset style, clear prompt, switch suggestions
   useEffect(() => {
     setSelectedStyle(currentModel.styles[0])
     setPrompt('')
     if (selectedModel === 'ideogram-3') {
-      setSuggestions(IDEOGRAM_SUGGESTIONS)
+      setSuggestions(getRandomSuggestions(IDEOGRAM_SUGGESTIONS, 6))
     } else {
       setSuggestions(getRandomSuggestions(ALL_PROMPT_SUGGESTIONS, 6))
     }
@@ -277,7 +291,6 @@ export default function GeneratePage() {
     }
   }
 
-  // Password gate screen
   if (!unlocked) {
     return (
       <main style={{ fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '680px', margin: '0 auto', padding: '0 1.5rem' }}>
@@ -337,7 +350,6 @@ export default function GeneratePage() {
         <p style={{ fontSize: '0.95rem', color: '#555', lineHeight: '1.6' }}>Describe your idea. Our AI engineers the perfect prompt. You walk in with your mind made up.</p>
       </section>
 
-      {/* Model selector */}
       <section style={{ marginBottom: '1.75rem' }}>
         <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>1 — Choose AI model</p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -352,7 +364,6 @@ export default function GeneratePage() {
             </div>
           ))}
         </div>
-        {/* Warning banner — only shows for Ideogram */}
         {currentModel.warning && (
           <div style={{ marginTop: '0.75rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '0.6rem 0.875rem' }}>
             <p style={{ fontSize: '0.8rem', color: '#92400e', margin: 0 }}>{currentModel.warning}</p>
@@ -361,7 +372,6 @@ export default function GeneratePage() {
         <p style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.5rem', textAlign: 'center' }}>🔒 Locked models unlock with any paid pack</p>
       </section>
 
-      {/* Style */}
       <section style={{ marginBottom: '1.75rem' }}>
         <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>2 — Choose style</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -371,7 +381,6 @@ export default function GeneratePage() {
         </div>
       </section>
 
-      {/* Prompt — label and placeholder change for Ideogram */}
       <section style={{ marginBottom: '1.75rem' }}>
         <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>
           {selectedModel === 'ideogram-3' ? '3 — Enter exact text to tattoo' : '3 — Describe your tattoo idea'}
@@ -399,7 +408,6 @@ export default function GeneratePage() {
         </div>
       </section>
 
-      {/* Placement */}
       <section style={{ marginBottom: '1.75rem' }}>
         <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>4 — Placement</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -412,7 +420,6 @@ export default function GeneratePage() {
         )}
       </section>
 
-      {/* Size */}
       <section style={{ marginBottom: '1.75rem' }}>
         <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>5 — Approximate size</p>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -425,7 +432,6 @@ export default function GeneratePage() {
         </div>
       </section>
 
-      {/* Colour */}
       <section style={{ marginBottom: '2rem' }}>
         <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>6 — Colour mode</p>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -439,12 +445,10 @@ export default function GeneratePage() {
         </div>
       </section>
 
-      {/* Generate button */}
       <button onClick={handleGenerate} disabled={isGenerating || !prompt.trim()} style={{ width: '100%', height: '52px', background: isGenerating || !prompt.trim() ? '#ccc' : '#111', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '600', cursor: isGenerating || !prompt.trim() ? 'not-allowed' : 'pointer', marginBottom: '1rem', transition: 'background 0.2s' }}>
         {isGenerating ? '✦ Generating your tattoo...' : '✦ Generate tattoo design'}
       </button>
 
-      {/* Loading */}
       {isGenerating && (
         <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
           <div style={{ width: '100%', height: '4px', background: '#f0f0f0', borderRadius: '999px', overflow: 'hidden', marginBottom: '0.75rem' }}>
@@ -455,14 +459,12 @@ export default function GeneratePage() {
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '10px', padding: '1rem', marginBottom: '1.5rem' }}>
           <p style={{ fontSize: '0.88rem', color: '#dc2626', margin: 0 }}>{error}</p>
         </div>
       )}
 
-      {/* Result */}
       {result && (
         <section style={{ marginBottom: '2rem' }}>
           <p style={{ fontSize: '0.78rem', letterSpacing: '0.06em', color: '#333', textTransform: 'uppercase', fontWeight: '700', marginBottom: '0.75rem' }}>Your tattoo design</p>
