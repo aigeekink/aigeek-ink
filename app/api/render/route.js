@@ -17,7 +17,7 @@ export async function POST(request) {
     const bodyImageBlob = base64ToBlob(bodyImageBase64)
     const bodyUploadUrl = await uploadToFal(bodyImageBlob, 'body-photo.jpg')
 
-    // Step 2: Generate mask as base64 PNG and upload
+    // Step 2: Generate SVG mask and upload
     const maskBase64 = generateMaskBase64(
       Math.round(imageWidth),
       Math.round(imageHeight),
@@ -31,7 +31,7 @@ export async function POST(request) {
     // Step 3: Build inpainting prompt
     const tattooPrompt = buildTattooPrompt(placement, style)
 
-    // Step 4: Call Fal.ai FLUX inpainting
+    // Step 4: Call Fal.ai FLUX pro Fill — best quality inpainting
     const response = await fetch('https://fal.run/fal-ai/flux-pro/v1/fill', {
       method: 'POST',
       headers: {
@@ -39,15 +39,16 @@ export async function POST(request) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-  prompt: tattooPrompt,
-  image_url: bodyUploadUrl,
-  mask_url: maskUploadUrl,
-  num_inference_steps: 28,
-  guidance_scale: 3.5,
-  num_images: 1,
-  output_format: 'jpeg',
-  enable_safety_checker: false,
-}),
+        prompt: tattooPrompt,
+        image_url: bodyUploadUrl,
+        mask_url: maskUploadUrl,
+        num_inference_steps: 28,
+        guidance_scale: 3.5,
+        num_images: 1,
+        output_format: 'jpeg',
+        enable_safety_checker: false,
+      }),
+    })
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
@@ -72,30 +73,18 @@ export async function POST(request) {
   }
 }
 
-// Generate a white circle mask on black background — server side using Canvas API via node
+// Generate white circle mask on black background as SVG
 function generateMaskBase64(width, height, cx, cy, radius) {
-  // We generate mask as SVG-based data URL since we're in Next.js server context
-  // Convert to a simple base64 PNG via a lightweight approach
-  // We'll create a minimal PNG manually using raw bytes for a circle mask
-
-  // Since we can't use browser Canvas in server routes, we build the mask
-  // as a simple SVG and return it — Fal.ai accepts SVG masks
-  // Actually Fal.ai needs PNG — so we return the SVG as data URL
-  // and let the client handle it, OR we use the approach below:
-
-  // Simplest server-safe approach: return mask as SVG data URI
-  // Fal.ai accepts image URLs — we'll use an inline SVG data URL
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
     <rect width="${width}" height="${height}" fill="black"/>
     <circle cx="${cx}" cy="${cy}" r="${radius}" fill="white"/>
   </svg>`
-
   const base64 = Buffer.from(svg).toString('base64')
   return `data:image/svg+xml;base64,${base64}`
 }
 
+// Upload file to Fal.ai storage and return URL
 async function uploadToFal(blob, filename) {
-  // Upload to Fal.ai storage and get a URL back
   const formData = new FormData()
   formData.append('file', blob, filename)
 
@@ -108,8 +97,6 @@ async function uploadToFal(blob, filename) {
   })
 
   if (!response.ok) {
-    // Fallback: return the base64 data URL directly if upload fails
-    // Fal.ai also accepts base64 data URLs as image_url
     throw new Error(`Upload failed: ${response.status}`)
   }
 
@@ -117,8 +104,8 @@ async function uploadToFal(blob, filename) {
   return data.url
 }
 
+// Convert base64 string or data URL to Blob
 function base64ToBlob(base64String) {
-  // Handle both raw base64 and data URLs
   const base64Data = base64String.includes(',')
     ? base64String.split(',')[1]
     : base64String
@@ -130,6 +117,7 @@ function base64ToBlob(base64String) {
   return new Blob([bytes], { type: mimeType })
 }
 
+// Build realistic tattoo inpainting prompt
 function buildTattooPrompt(placement, style) {
   const placementMap = {
     forearm: 'forearm',
