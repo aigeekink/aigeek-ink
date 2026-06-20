@@ -11,6 +11,32 @@ const STEPS = {
   ERROR: 'error',
 }
 
+// Convert any image file to JPEG base64 via canvas
+// Fixes AVIF, HEIC, WebP and other formats Fal.ai doesn't support
+async function convertToJpegBase64(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const objectUrl = URL.createObjectURL(file)
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')
+      // White background (handles transparent PNGs)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, 0, 0)
+      URL.revokeObjectURL(objectUrl)
+      resolve(canvas.toDataURL('image/jpeg', 0.92))
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error('Failed to load image'))
+    }
+    img.src = objectUrl
+  })
+}
+
 export default function RenderPage() {
   const [step, setStep] = useState(STEPS.UPLOAD_PHOTO)
   const [bodyPhoto, setBodyPhoto] = useState(null)
@@ -22,11 +48,11 @@ export default function RenderPage() {
   const [resultUrl, setResultUrl] = useState(null)
   const [error, setError] = useState(null)
   const [imageNaturalSize, setImageNaturalSize] = useState({ width: 0, height: 0 })
+  const [converting, setConverting] = useState(false)
 
   const photoImgRef = useRef(null)
   const overlayCanvasRef = useRef(null)
 
-  // Max radius = half the shorter side of the image, capped at 400
   const maxRadius = imageNaturalSize.width
     ? Math.min(Math.min(imageNaturalSize.width, imageNaturalSize.height) / 2, 400)
     : 400
@@ -80,23 +106,35 @@ export default function RenderPage() {
 
   useEffect(() => { drawOverlay() }, [drawOverlay])
 
-  const handlePhotoUpload = (e) => {
+  const handlePhotoUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
-    const url = URL.createObjectURL(file)
-    setBodyPhotoUrl(url)
-    const reader = new FileReader()
-    reader.onload = (ev) => setBodyPhoto(ev.target.result)
-    reader.readAsDataURL(file)
-    setStep(STEPS.CLICK_TO_PLACE)
+
+    setConverting(true)
+    try {
+      // Always convert to JPEG — fixes AVIF, HEIC, WebP, PNG etc
+      const jpegBase64 = await convertToJpegBase64(file)
+      setBodyPhoto(jpegBase64)
+      setBodyPhotoUrl(jpegBase64)
+      setStep(STEPS.CLICK_TO_PLACE)
+    } catch (err) {
+      setError('Could not load that image. Please try a different photo.')
+    } finally {
+      setConverting(false)
+    }
   }
 
-  const handleTattooUpload = (e) => {
+  const handleTattooUpload = async (e) => {
     const file = e.target.files[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => { setTattooBase64(ev.target.result); setTattooLoaded(true) }
-    reader.readAsDataURL(file)
+    try {
+      // Convert tattoo image to JPEG too
+      const jpegBase64 = await convertToJpegBase64(file)
+      setTattooBase64(jpegBase64)
+      setTattooLoaded(true)
+    } catch (err) {
+      setError('Could not load tattoo image. Please try again.')
+    }
   }
 
   const handlePhotoClick = (e) => {
@@ -150,11 +188,25 @@ export default function RenderPage() {
     }
   }
 
-  const handleTryAgain = () => { setStep(STEPS.CLICK_TO_PLACE); setClickPos(null); setResultUrl(null); setError(null) }
-  const handleStartOver = () => { setStep(STEPS.UPLOAD_PHOTO); setBodyPhoto(null); setBodyPhotoUrl(null); setClickPos(null); setResultUrl(null); setError(null); setTattooBase64(null); setTattooLoaded(false) }
+  const handleTryAgain = () => {
+    setStep(STEPS.CLICK_TO_PLACE)
+    setClickPos(null)
+    setResultUrl(null)
+    setError(null)
+  }
+
+  const handleStartOver = () => {
+    setStep(STEPS.UPLOAD_PHOTO)
+    setBodyPhoto(null)
+    setBodyPhotoUrl(null)
+    setClickPos(null)
+    setResultUrl(null)
+    setError(null)
+    setTattooBase64(null)
+    setTattooLoaded(false)
+  }
 
   const renderButtonEnabled = step === STEPS.ADJUST_SIZE && clickPos && tattooLoaded
-
   const sizeLabel = maskRadius < 30 ? 'Tiny' : maskRadius < 60 ? 'Small' : maskRadius < 120 ? 'Medium' : maskRadius < 200 ? 'Large' : 'X-Large'
 
   return (
@@ -175,17 +227,23 @@ export default function RenderPage() {
         <div style={{ textAlign: 'center', padding: '2rem 1.5rem', border: '2px dashed #e5e5e5', borderRadius: '12px', marginBottom: '1.25rem' }}>
           <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📷</div>
           <p style={{ fontWeight: '600', color: '#111', marginBottom: '0.4rem' }}>Upload or take a body photo</p>
-          <p style={{ fontSize: '0.82rem', color: '#888', marginBottom: '1.5rem', lineHeight: '1.6' }}>Arm, wrist, shoulder, chest — wherever you want the tattoo. Clear photo, good lighting works best.</p>
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#111', color: '#fff', padding: '11px 22px', borderRadius: '8px', fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer' }}>
-              📁 Choose photo
-              <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
-            </label>
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fff', color: '#111', padding: '11px 22px', borderRadius: '8px', fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer', border: '1px solid #ddd' }}>
-              📷 Take photo
-              <input type="file" accept="image/*" capture="environment" onChange={handlePhotoUpload} style={{ display: 'none' }} />
-            </label>
-          </div>
+          <p style={{ fontSize: '0.82rem', color: '#888', marginBottom: '1.5rem', lineHeight: '1.6' }}>
+            Arm, wrist, shoulder, chest — wherever you want the tattoo.<br />Clear photo, good lighting works best.
+          </p>
+          {converting ? (
+            <p style={{ fontSize: '0.88rem', color: '#666' }}>Processing image...</p>
+          ) : (
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#111', color: '#fff', padding: '11px 22px', borderRadius: '8px', fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer' }}>
+                📁 Choose photo
+                <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
+              </label>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fff', color: '#111', padding: '11px 22px', borderRadius: '8px', fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer', border: '1px solid #ddd' }}>
+                📷 Take photo
+                <input type="file" accept="image/*" capture="environment" onChange={handlePhotoUpload} style={{ display: 'none' }} />
+              </label>
+            </div>
+          )}
           <p style={{ fontSize: '0.72rem', color: '#bbb', marginTop: '1.25rem' }}>🔒 Your photo stays private — never shared or stored permanently</p>
         </div>
       )}
@@ -234,22 +292,15 @@ export default function RenderPage() {
                 <span style={{ fontSize: '0.78rem', color: '#888', fontWeight: '600' }}>{sizeLabel}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <button
-                  onClick={() => adjustRadius(-10)}
-                  style={{ width: '36px', height: '36px', borderRadius: '8px', border: '1px solid #ddd', background: '#fff', fontSize: '1.1rem', fontWeight: '700', color: '#333', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <button onClick={() => adjustRadius(-10)}
+                  style={{ width: '36px', height: '36px', borderRadius: '8px', border: '1px solid #ddd', background: '#fff', fontSize: '1.2rem', fontWeight: '700', color: '#333', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   −
                 </button>
-                <input
-                  type="range"
-                  min="15"
-                  max={maxRadius}
-                  value={maskRadius}
+                <input type="range" min="15" max={maxRadius} value={maskRadius}
                   onChange={(e) => setMaskRadius(Number(e.target.value))}
-                  style={{ flex: 1, accentColor: '#111' }}
-                />
-                <button
-                  onClick={() => adjustRadius(10)}
-                  style={{ width: '36px', height: '36px', borderRadius: '8px', border: '1px solid #ddd', background: '#fff', fontSize: '1.1rem', fontWeight: '700', color: '#333', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  style={{ flex: 1, accentColor: '#111' }} />
+                <button onClick={() => adjustRadius(10)}
+                  style={{ width: '36px', height: '36px', borderRadius: '8px', border: '1px solid #ddd', background: '#fff', fontSize: '1.2rem', fontWeight: '700', color: '#333', cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   +
                 </button>
               </div>
@@ -261,7 +312,8 @@ export default function RenderPage() {
           )}
 
           <div style={{ display: 'flex', gap: '8px', marginBottom: '1.5rem' }}>
-            <button onClick={handleStartOver} style={{ flex: 0, padding: '0 16px', height: '48px', background: '#f5f5f5', color: '#555', border: '1px solid #e5e5e5', borderRadius: '10px', fontSize: '0.85rem', cursor: 'pointer' }}>
+            <button onClick={handleStartOver}
+              style={{ flex: 0, padding: '0 16px', height: '48px', background: '#f5f5f5', color: '#555', border: '1px solid #e5e5e5', borderRadius: '10px', fontSize: '0.85rem', cursor: 'pointer' }}>
               ← New photo
             </button>
             <button onClick={handleRender} disabled={!renderButtonEnabled}
@@ -277,7 +329,9 @@ export default function RenderPage() {
         <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
           <div style={{ width: '48px', height: '48px', border: '3px solid #f0f0f0', borderTop: '3px solid #111', borderRadius: '50%', margin: '0 auto 1.5rem', animation: 'spin 1s linear infinite' }} />
           <p style={{ fontWeight: '600', color: '#111', marginBottom: '0.5rem', fontSize: '1rem' }}>Rendering your tattoo...</p>
-          <p style={{ fontSize: '0.85rem', color: '#888', lineHeight: '1.6', maxWidth: '300px', margin: '0 auto' }}>The AI is placing your design on your skin. This takes 15–30 seconds.</p>
+          <p style={{ fontSize: '0.85rem', color: '#888', lineHeight: '1.6', maxWidth: '300px', margin: '0 auto' }}>
+            The AI is placing your design on your skin. This takes 15–30 seconds.
+          </p>
           <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
         </div>
       )}
@@ -290,17 +344,32 @@ export default function RenderPage() {
           </div>
           <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: '12px', padding: '1.25rem', marginBottom: '1rem', textAlign: 'center' }}>
             <p style={{ fontWeight: '700', color: '#111', fontSize: '1rem', marginBottom: '0.4rem' }}>This could be on you. Permanently.</p>
-            <p style={{ fontSize: '0.85rem', color: '#666', lineHeight: '1.6', marginBottom: '1rem' }}>Download the printable stencil and Artist Handoff PDF to take to your artist.</p>
+            <p style={{ fontSize: '0.85rem', color: '#666', lineHeight: '1.6', marginBottom: '1rem' }}>
+              Download the printable stencil and Artist Handoff PDF to take to your artist.
+            </p>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
-              <a href={resultUrl} download="aigeek-skin-render.jpg" style={{ display: 'inline-block', background: '#111', color: '#fff', padding: '10px 20px', borderRadius: '8px', textDecoration: 'none', fontSize: '0.88rem', fontWeight: '600' }}>↓ Save result</a>
-              <button onClick={handleTryAgain} style={{ background: '#f5f5f5', color: '#555', border: '1px solid #e5e5e5', padding: '10px 20px', borderRadius: '8px', fontSize: '0.88rem', cursor: 'pointer' }}>Try different placement</button>
-              <button onClick={handleStartOver} style={{ background: '#f5f5f5', color: '#555', border: '1px solid #e5e5e5', padding: '10px 20px', borderRadius: '8px', fontSize: '0.88rem', cursor: 'pointer' }}>New photo</button>
+              <a href={resultUrl} download="aigeek-skin-render.jpg"
+                style={{ display: 'inline-block', background: '#111', color: '#fff', padding: '10px 20px', borderRadius: '8px', textDecoration: 'none', fontSize: '0.88rem', fontWeight: '600' }}>
+                ↓ Save result
+              </a>
+              <button onClick={handleTryAgain}
+                style={{ background: '#f5f5f5', color: '#555', border: '1px solid #e5e5e5', padding: '10px 20px', borderRadius: '8px', fontSize: '0.88rem', cursor: 'pointer' }}>
+                Try different placement
+              </button>
+              <button onClick={handleStartOver}
+                style={{ background: '#f5f5f5', color: '#555', border: '1px solid #e5e5e5', padding: '10px 20px', borderRadius: '8px', fontSize: '0.88rem', cursor: 'pointer' }}>
+                New photo
+              </button>
             </div>
           </div>
           <div style={{ background: '#111', borderRadius: '12px', padding: '1.25rem', marginBottom: '2rem', textAlign: 'center' }}>
             <p style={{ color: '#fff', fontWeight: '700', fontSize: '0.95rem', marginBottom: '0.35rem' }}>Get the full pack</p>
-            <p style={{ color: '#aaa', fontSize: '0.82rem', lineHeight: '1.6', marginBottom: '1rem' }}>HD design · Printable stencil · Artist Handoff PDF.</p>
-            <a href="/pricing" style={{ display: 'inline-block', background: '#fff', color: '#111', padding: '10px 24px', borderRadius: '8px', textDecoration: 'none', fontSize: '0.88rem', fontWeight: '700' }}>See pricing — from $2.99</a>
+            <p style={{ color: '#aaa', fontSize: '0.82rem', lineHeight: '1.6', marginBottom: '1rem' }}>
+              HD design · Printable stencil · Artist Handoff PDF. Everything to walk into your studio prepared.
+            </p>
+            <a href="/pricing" style={{ display: 'inline-block', background: '#fff', color: '#111', padding: '10px 24px', borderRadius: '8px', textDecoration: 'none', fontSize: '0.88rem', fontWeight: '700' }}>
+              See pricing — from $2.99
+            </a>
           </div>
         </>
       )}
@@ -311,13 +380,17 @@ export default function RenderPage() {
           <p style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>⚠️</p>
           <p style={{ fontWeight: '600', color: '#dc2626', marginBottom: '0.5rem' }}>Render failed</p>
           <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '1.25rem', lineHeight: '1.6' }}>{error}</p>
-          <button onClick={handleTryAgain} style={{ background: '#111', color: '#fff', padding: '10px 24px', borderRadius: '8px', border: 'none', fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer' }}>Try again</button>
+          <button onClick={handleTryAgain}
+            style={{ background: '#111', color: '#fff', padding: '10px 24px', borderRadius: '8px', border: 'none', fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer' }}>
+            Try again
+          </button>
         </div>
       )}
 
       <footer style={{ borderTop: '1px solid #f0f0f0', padding: '1.25rem 0 2rem' }}>
         <p style={{ fontSize: '0.72rem', color: '#ccc', textAlign: 'center' }}>© 2026 aigeek.ink</p>
       </footer>
+
     </main>
   )
 }
