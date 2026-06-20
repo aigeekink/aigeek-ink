@@ -3,10 +3,10 @@ import { NextResponse } from 'next/server'
 export async function POST(request) {
   try {
     const body = await request.json()
-    const { bodyImageBase64, clickX, clickY, maskRadius, imageWidth, imageHeight } = body
+    const { bodyImageBase64, tattooImageBase64, clickX, clickY, maskRadius, imageWidth, imageHeight } = body
 
-    if (!bodyImageBase64) {
-      return NextResponse.json({ error: 'Missing body photo.' }, { status: 400 })
+    if (!bodyImageBase64 || !tattooImageBase64) {
+      return NextResponse.json({ error: 'Missing required images.' }, { status: 400 })
     }
     if (typeof clickX !== 'number' || typeof clickY !== 'number') {
       return NextResponse.json({ error: 'Invalid click coordinates.' }, { status: 400 })
@@ -21,18 +21,20 @@ export async function POST(request) {
       Math.round(maskRadius)
     )
 
-    const tattooPrompt = `A realistic fresh tattoo on human skin. The tattoo design is rendered as real ink sitting naturally in the skin with authentic depth and texture. Skin pores and texture visible through the ink. Surrounding skin is completely natural and unmodified. Photorealistic tattoo photography, sharp focus.`
-
-    const response = await fetch('https://fal.run/fal-ai/flux-pro/v1/fill', {
+    // Use flux-kontext-lora/inpaint which supports reference_image_url
+    // This tells the AI to place OUR specific tattoo design, not invent one
+    const response = await fetch('https://fal.run/fal-ai/flux-kontext-lora/inpaint', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${process.env.FAL_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        prompt: tattooPrompt,
+        prompt: 'Place this exact tattoo design realistically on the skin. The tattoo ink sits naturally in the skin with authentic depth and texture. Skin pores visible through the ink. Surrounding skin completely natural and unmodified. Photorealistic tattoo photography.',
         image_url: bodyImageBase64,
         mask_url: maskDataUri,
+        reference_image_url: tattooImageBase64,
+        strength: 0.88,
         num_inference_steps: 28,
         guidance_scale: 3.5,
         num_images: 1,
@@ -64,12 +66,11 @@ export async function POST(request) {
   }
 }
 
-// Pure JS PNG generation — grayscale, white circle on black background
+// Pure JS PNG generation — white circle on black background
 // No external dependencies, works in Vercel serverless
 function generateMaskPNGDataUri(width, height, cx, cy, radius) {
   const zlib = require('zlib')
 
-  // Build raw pixel rows (grayscale, 1 byte per pixel)
   const rawData = []
   for (let y = 0; y < height; y++) {
     rawData.push(0) // PNG filter type: None
@@ -82,10 +83,8 @@ function generateMaskPNGDataUri(width, height, cx, cy, radius) {
   const rawBytes = Buffer.from(rawData)
   const compressed = zlib.deflateSync(rawBytes)
 
-  // Build PNG chunks
   const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
 
-  // IHDR: width, height, bit depth=8, colour type=0 (grayscale)
   const ihdrData = Buffer.alloc(13)
   ihdrData.writeUInt32BE(width, 0)
   ihdrData.writeUInt32BE(height, 4)
