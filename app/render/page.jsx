@@ -15,13 +15,13 @@ export default function RenderPage() {
   const [step, setStep] = useState(STEPS.UPLOAD_PHOTO)
   const [bodyPhoto, setBodyPhoto] = useState(null)
   const [bodyPhotoUrl, setBodyPhotoUrl] = useState(null)
-  const [tattooUrl, setTattooUrl] = useState(null)
+  const [tattooBase64, setTattooBase64] = useState(null)
+  const [tattooLoaded, setTattooLoaded] = useState(false)
   const [clickPos, setClickPos] = useState(null)
-  const [maskRadius, setMaskRadius] = useState(120)
+  const [maskRadius, setMaskRadius] = useState(80)
   const [resultUrl, setResultUrl] = useState(null)
   const [error, setError] = useState(null)
   const [imageNaturalSize, setImageNaturalSize] = useState({ width: 0, height: 0 })
-  const [placement, setPlacement] = useState('forearm')
   const [style, setStyle] = useState('blackwork')
 
   const photoImgRef = useRef(null)
@@ -46,15 +46,18 @@ export default function RenderPage() {
     const ctx = canvas.getContext('2d')
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
+    // Darken outside the circle
     ctx.fillStyle = 'rgba(0,0,0,0.45)'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
+    // Cut out circle to show original
     ctx.globalCompositeOperation = 'destination-out'
     ctx.beginPath()
     ctx.arc(displayX, displayY, displayRadius, 0, Math.PI * 2)
     ctx.fill()
     ctx.globalCompositeOperation = 'source-over'
 
+    // Dashed circle border
     ctx.strokeStyle = '#fff'
     ctx.lineWidth = 2
     ctx.setLineDash([6, 4])
@@ -63,6 +66,7 @@ export default function RenderPage() {
     ctx.stroke()
     ctx.setLineDash([])
 
+    // Crosshair
     ctx.strokeStyle = 'rgba(255,255,255,0.8)'
     ctx.lineWidth = 1
     ctx.beginPath()
@@ -80,15 +84,23 @@ export default function RenderPage() {
   const handlePhotoUpload = (e) => {
     const file = e.target.files[0]
     if (!file) return
-
     const url = URL.createObjectURL(file)
     setBodyPhotoUrl(url)
-
     const reader = new FileReader()
     reader.onload = (ev) => setBodyPhoto(ev.target.result)
     reader.readAsDataURL(file)
-
     setStep(STEPS.CLICK_TO_PLACE)
+  }
+
+  const handleTattooUpload = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      setTattooBase64(ev.target.result)
+      setTattooLoaded(true)
+    }
+    reader.readAsDataURL(file)
   }
 
   const handlePhotoClick = (e) => {
@@ -109,51 +121,32 @@ export default function RenderPage() {
 
   const handleImageLoad = () => {
     const img = photoImgRef.current
-    if (img) {
-      setImageNaturalSize({ width: img.naturalWidth, height: img.naturalHeight })
-    }
-  }
-
-  const handleTattooUpload = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-    const url = URL.createObjectURL(file)
-    setTattooUrl(url)
+    if (img) setImageNaturalSize({ width: img.naturalWidth, height: img.naturalHeight })
   }
 
   const handleRender = async () => {
-    if (!bodyPhoto || !clickPos) return
-
+    if (!bodyPhoto || !clickPos || !tattooBase64) return
     setStep(STEPS.RENDERING)
     setError(null)
 
     try {
-      let tattooImageUrl = tattooUrl
-      if (tattooUrl && tattooUrl.startsWith('blob:')) {
-        tattooImageUrl = await blobUrlToBase64(tattooUrl)
-      }
-
       const response = await fetch('/api/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           bodyImageBase64: bodyPhoto,
-          tattooImageUrl: tattooImageUrl,
+          tattooImageBase64: tattooBase64,
           clickX: clickPos.x,
           clickY: clickPos.y,
           maskRadius: maskRadius,
           imageWidth: imageNaturalSize.width,
           imageHeight: imageNaturalSize.height,
-          placement,
           style,
         }),
       })
 
       const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Render failed.')
-      }
+      if (!response.ok) throw new Error(data.error || 'Render failed.')
 
       setResultUrl(data.resultUrl)
       setStep(STEPS.RESULT)
@@ -178,8 +171,11 @@ export default function RenderPage() {
     setClickPos(null)
     setResultUrl(null)
     setError(null)
-    setTattooUrl(null)
+    setTattooBase64(null)
+    setTattooLoaded(false)
   }
+
+  const renderButtonEnabled = step === STEPS.ADJUST_SIZE && clickPos && tattooLoaded
 
   return (
     <main style={{ fontFamily: 'system-ui, -apple-system, sans-serif', maxWidth: '680px', margin: '0 auto', padding: '0 1rem' }}>
@@ -194,7 +190,7 @@ export default function RenderPage() {
         <p style={{ fontSize: '0.88rem', color: '#666', lineHeight: '1.6' }}>AI renders your tattoo realistically onto your photo — skin texture, ink depth, the real thing.</p>
       </section>
 
-      {/* STEP: Upload photo */}
+      {/* UPLOAD PHOTO */}
       {step === STEPS.UPLOAD_PHOTO && (
         <div style={{ textAlign: 'center', padding: '2rem 1.5rem', border: '2px dashed #e5e5e5', borderRadius: '12px', marginBottom: '1.25rem' }}>
           <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📷</div>
@@ -202,32 +198,25 @@ export default function RenderPage() {
           <p style={{ fontSize: '0.82rem', color: '#888', marginBottom: '1.5rem', lineHeight: '1.6' }}>
             Arm, wrist, shoulder, chest — wherever you want the tattoo.<br />Clear photo, good lighting works best.
           </p>
-
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
-            {/* Choose from gallery */}
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#111', color: '#fff', padding: '11px 22px', borderRadius: '8px', fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer' }}>
               📁 Choose photo
               <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
             </label>
-
-            {/* Take photo with camera */}
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: '#fff', color: '#111', padding: '11px 22px', borderRadius: '8px', fontSize: '0.9rem', fontWeight: '600', cursor: 'pointer', border: '1px solid #ddd' }}>
               📷 Take photo
               <input type="file" accept="image/*" capture="environment" onChange={handlePhotoUpload} style={{ display: 'none' }} />
             </label>
           </div>
-
-          <p style={{ fontSize: '0.72rem', color: '#bbb', marginTop: '1.25rem' }}>
-            🔒 Your photo stays private — never shared or stored permanently
-          </p>
+          <p style={{ fontSize: '0.72rem', color: '#bbb', marginTop: '1.25rem' }}>🔒 Your photo stays private — never shared or stored permanently</p>
         </div>
       )}
 
-      {/* STEP: Photo uploaded — click to place + adjust */}
+      {/* PLACE + ADJUST */}
       {(step === STEPS.CLICK_TO_PLACE || step === STEPS.ADJUST_SIZE) && bodyPhotoUrl && (
         <>
-          {/* Tattoo upload prompt */}
-          {!tattooUrl && (
+          {/* Tattoo upload */}
+          {!tattooLoaded ? (
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '0.75rem 1rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
               <p style={{ fontSize: '0.8rem', color: '#92400e', margin: 0 }}>Load your tattoo design first:</p>
               <label style={{ display: 'inline-block', background: '#111', color: '#fff', padding: '6px 16px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -235,9 +224,7 @@ export default function RenderPage() {
                 <input type="file" accept="image/*" onChange={handleTattooUpload} style={{ display: 'none' }} />
               </label>
             </div>
-          )}
-
-          {tattooUrl && (
+          ) : (
             <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '0.6rem 1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '0.8rem', color: '#166534' }}>✓ Tattoo design loaded</span>
               <label style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#166534', cursor: 'pointer', textDecoration: 'underline' }}>
@@ -247,12 +234,12 @@ export default function RenderPage() {
             </div>
           )}
 
-          {/* Instruction banner */}
+          {/* Instruction */}
           <div style={{ background: '#f5f5f5', borderRadius: '8px', padding: '0.6rem 1rem', marginBottom: '0.75rem', textAlign: 'center' }}>
             <p style={{ fontSize: '0.82rem', color: '#555', margin: 0, fontWeight: '600' }}>
               {step === STEPS.CLICK_TO_PLACE
                 ? '👆 Tap the photo where you want the tattoo'
-                : '✓ Placement set — adjust size then hit Render'}
+                : '✓ Placement set — adjust size below, then render'}
             </p>
           </div>
 
@@ -282,48 +269,35 @@ export default function RenderPage() {
             )}
           </div>
 
-          {/* Size slider */}
+          {/* Size + style controls */}
           {step === STEPS.ADJUST_SIZE && (
             <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: '12px', padding: '1rem', marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <label style={{ fontSize: '0.82rem', color: '#555', fontWeight: '600' }}>Tattoo size on skin</label>
-                <span style={{ fontSize: '0.78rem', color: '#888' }}>
-                  {maskRadius < 80 ? 'Small' : maskRadius < 150 ? 'Medium' : maskRadius < 220 ? 'Large' : 'X-Large'}
-                </span>
-              </div>
-              <input
-                type="range"
-                min="50"
-                max="300"
-                value={maskRadius}
-                onChange={(e) => setMaskRadius(Number(e.target.value))}
-                style={{ width: '100%', accentColor: '#111' }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-                <span style={{ fontSize: '0.7rem', color: '#bbb' }}>Smaller</span>
-                <span style={{ fontSize: '0.7rem', color: '#bbb' }}>Larger</span>
-              </div>
-            </div>
-          )}
 
-          {/* Placement + style selectors */}
-          {step === STEPS.ADJUST_SIZE && (
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '1rem' }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.75rem', color: '#666', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Placement</label>
-                <select value={placement} onChange={(e) => setPlacement(e.target.value)}
-                  style={{ width: '100%', height: '36px', padding: '0 10px', fontSize: '0.82rem', border: '1px solid #ddd', borderRadius: '8px', background: '#fff', color: '#333' }}>
-                  <option value="forearm">Forearm</option>
-                  <option value="wrist">Wrist</option>
-                  <option value="shoulder">Shoulder</option>
-                  <option value="chest">Chest</option>
-                  <option value="ankle">Ankle</option>
-                  <option value="back">Back</option>
-                  <option value="other">Other</option>
-                </select>
+              {/* Size slider */}
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '0.82rem', color: '#555', fontWeight: '600' }}>Tattoo size on skin</label>
+                  <span style={{ fontSize: '0.78rem', color: '#888' }}>
+                    {maskRadius < 30 ? 'Tiny' : maskRadius < 60 ? 'Small' : maskRadius < 120 ? 'Medium' : maskRadius < 200 ? 'Large' : 'X-Large'}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="15"
+                  max="300"
+                  value={maskRadius}
+                  onChange={(e) => setMaskRadius(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#111' }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#bbb' }}>Tiny</span>
+                  <span style={{ fontSize: '0.7rem', color: '#bbb' }}>X-Large</span>
+                </div>
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.75rem', color: '#666', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Style</label>
+
+              {/* Style selector */}
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Tattoo style</label>
                 <select value={style} onChange={(e) => setStyle(e.target.value)}
                   style={{ width: '100%', height: '36px', padding: '0 10px', fontSize: '0.82rem', border: '1px solid #ddd', borderRadius: '8px', background: '#fff', color: '#333' }}>
                   <option value="blackwork">Blackwork</option>
@@ -344,30 +318,18 @@ export default function RenderPage() {
             </button>
             <button
               onClick={handleRender}
-              disabled={step !== STEPS.ADJUST_SIZE || !clickPos || !tattooUrl}
-              style={{
-                flex: 1, height: '48px',
-                background: step === STEPS.ADJUST_SIZE && clickPos && tattooUrl ? '#111' : '#ccc',
-                color: '#fff', border: 'none', borderRadius: '10px',
-                fontSize: '0.95rem', fontWeight: '700',
-                cursor: step === STEPS.ADJUST_SIZE && clickPos && tattooUrl ? 'pointer' : 'not-allowed',
-                transition: 'background 0.2s',
-              }}>
+              disabled={!renderButtonEnabled}
+              style={{ flex: 1, height: '48px', background: renderButtonEnabled ? '#111' : '#ccc', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '0.95rem', fontWeight: '700', cursor: renderButtonEnabled ? 'pointer' : 'not-allowed', transition: 'background 0.2s' }}>
               ✦ Render on skin
             </button>
           </div>
         </>
       )}
 
-      {/* STEP: Rendering */}
+      {/* RENDERING */}
       {step === STEPS.RENDERING && (
         <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
-          <div style={{
-            width: '48px', height: '48px',
-            border: '3px solid #f0f0f0', borderTop: '3px solid #111',
-            borderRadius: '50%', margin: '0 auto 1.5rem',
-            animation: 'spin 1s linear infinite',
-          }} />
+          <div style={{ width: '48px', height: '48px', border: '3px solid #f0f0f0', borderTop: '3px solid #111', borderRadius: '50%', margin: '0 auto 1.5rem', animation: 'spin 1s linear infinite' }} />
           <p style={{ fontWeight: '600', color: '#111', marginBottom: '0.5rem', fontSize: '1rem' }}>Rendering your tattoo...</p>
           <p style={{ fontSize: '0.85rem', color: '#888', lineHeight: '1.6', maxWidth: '300px', margin: '0 auto' }}>
             The AI is placing your design on your skin. This takes 15–30 seconds.
@@ -376,7 +338,7 @@ export default function RenderPage() {
         </div>
       )}
 
-      {/* STEP: Result */}
+      {/* RESULT */}
       {step === STEPS.RESULT && resultUrl && (
         <>
           <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #f0f0f0', marginBottom: '1rem' }}>
@@ -384,9 +346,7 @@ export default function RenderPage() {
           </div>
           <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: '12px', padding: '1.25rem', marginBottom: '1rem', textAlign: 'center' }}>
             <p style={{ fontWeight: '700', color: '#111', fontSize: '1rem', marginBottom: '0.4rem' }}>This could be on you. Permanently.</p>
-            <p style={{ fontSize: '0.85rem', color: '#666', lineHeight: '1.6', marginBottom: '1rem' }}>
-              Download the printable stencil and Artist Handoff PDF to take to your artist.
-            </p>
+            <p style={{ fontSize: '0.85rem', color: '#666', lineHeight: '1.6', marginBottom: '1rem' }}>Download the printable stencil and Artist Handoff PDF to take to your artist.</p>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
               <a href={resultUrl} download="aigeek-skin-render.jpg"
                 style={{ display: 'inline-block', background: '#111', color: '#fff', padding: '10px 20px', borderRadius: '8px', textDecoration: 'none', fontSize: '0.88rem', fontWeight: '600' }}>
@@ -404,9 +364,7 @@ export default function RenderPage() {
           </div>
           <div style={{ background: '#111', borderRadius: '12px', padding: '1.25rem', marginBottom: '2rem', textAlign: 'center' }}>
             <p style={{ color: '#fff', fontWeight: '700', fontSize: '0.95rem', marginBottom: '0.35rem' }}>Get the full pack</p>
-            <p style={{ color: '#aaa', fontSize: '0.82rem', lineHeight: '1.6', marginBottom: '1rem' }}>
-              HD design · Printable stencil · Artist Handoff PDF. Everything to walk into your studio prepared.
-            </p>
+            <p style={{ color: '#aaa', fontSize: '0.82rem', lineHeight: '1.6', marginBottom: '1rem' }}>HD design · Printable stencil · Artist Handoff PDF. Everything to walk into your studio prepared.</p>
             <a href="/pricing" style={{ display: 'inline-block', background: '#fff', color: '#111', padding: '10px 24px', borderRadius: '8px', textDecoration: 'none', fontSize: '0.88rem', fontWeight: '700' }}>
               See pricing — from $2.99
             </a>
@@ -414,7 +372,7 @@ export default function RenderPage() {
         </>
       )}
 
-      {/* STEP: Error */}
+      {/* ERROR */}
       {step === STEPS.ERROR && (
         <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '12px', padding: '1.5rem', marginBottom: '1rem', textAlign: 'center' }}>
           <p style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>⚠️</p>
@@ -433,14 +391,4 @@ export default function RenderPage() {
 
     </main>
   )
-}
-
-async function blobUrlToBase64(blobUrl) {
-  const response = await fetch(blobUrl)
-  const blob = await response.blob()
-  return new Promise((resolve) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result)
-    reader.readAsDataURL(blob)
-  })
 }
