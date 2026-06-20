@@ -32,24 +32,22 @@ export async function POST(request) {
     const tattooPrompt = buildTattooPrompt(placement, style)
 
     // Step 4: Call Fal.ai FLUX inpainting
-    const response = await fetch('https://fal.run/fal-ai/flux-lora/inpainting', {
+    const response = await fetch('https://fal.run/fal-ai/flux-pro/v1/fill', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${process.env.FAL_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        prompt: tattooPrompt,
-        image_url: bodyUploadUrl,
-        mask_url: maskUploadUrl,
-        num_inference_steps: 28,
-        guidance_scale: 3.5,
-        strength: 0.92,
-        num_images: 1,
-        output_format: 'jpeg',
-        enable_safety_checker: false,
-      }),
-    })
+  prompt: tattooPrompt,
+  image_url: bodyUploadUrl,
+  mask_url: maskUploadUrl,
+  num_inference_steps: 28,
+  guidance_scale: 3.5,
+  num_images: 1,
+  output_format: 'jpeg',
+  enable_safety_checker: false,
+}),
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))
