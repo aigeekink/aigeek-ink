@@ -3,40 +3,42 @@ import { NextResponse } from 'next/server'
 export async function POST(request) {
   try {
     const body = await request.json()
-    const { bodyImageBase64, tattooImageBase64, clickX, clickY, maskRadius, imageWidth, imageHeight } = body
+    // Now receives compositeImageBase64 — tattoo already placed on body photo by client
+    const { compositeImageBase64, clickX, clickY, maskRadius, imageWidth, imageHeight } = body
 
-    if (!bodyImageBase64 || !tattooImageBase64) {
-      return NextResponse.json({ error: 'Missing required images.' }, { status: 400 })
+    if (!compositeImageBase64) {
+      return NextResponse.json({ error: 'Missing composite image.' }, { status: 400 })
     }
     if (typeof clickX !== 'number' || typeof clickY !== 'number') {
       return NextResponse.json({ error: 'Invalid click coordinates.' }, { status: 400 })
     }
 
-    // Generate PNG mask — pure JS, no external dependencies
-    const maskDataUri = generateMaskPNGDataUri(
-      Math.round(imageWidth),
-      Math.round(imageHeight),
-      Math.round(clickX),
-      Math.round(clickY),
-      Math.round(maskRadius)
-    )
+    const cx = Math.round(clickX)
+    const cy = Math.round(clickY)
+    const radius = Math.round(maskRadius)
+    const w = Math.round(imageWidth)
+    const h = Math.round(imageHeight)
 
-    // Use flux-kontext-lora/inpaint which supports reference_image_url
-    // This tells the AI to place OUR specific tattoo design, not invent one
-    const response = await fetch('https://fal.run/fal-ai/flux-kontext-lora/inpaint', {
+    // Generate PNG mask
+    const maskDataUri = generateMaskPNGDataUri(w, h, cx, cy, radius)
+
+    // Send composite (body + tattoo overlay) + mask to Fal.ai
+    // Fal.ai now just needs to make the overlay look like real ink
+    // NOT invent a new tattoo — the design is already positioned correctly
+    const prompt = `Make this tattoo look freshly inked on real skin. Bold dark rich black ink with high contrast and crisp clean lines. The tattoo is newly done today — deep saturated blacks, no fading, sharp edges. Skin texture and pores visible through the ink. Surrounding skin completely natural. Professional tattoo photography, sharp focus.`
+
+    const response = await fetch('https://fal.run/fal-ai/flux-pro/v1/fill', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${process.env.FAL_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        prompt: 'Place this exact tattoo design realistically on the skin. The tattoo ink sits naturally in the skin with authentic depth and texture. Skin pores visible through the ink. Surrounding skin completely natural and unmodified. Photorealistic tattoo photography.',
-        image_url: bodyImageBase64,
+        prompt,
+        image_url: compositeImageBase64,
         mask_url: maskDataUri,
-        reference_image_url: tattooImageBase64,
-        strength: 0.88,
         num_inference_steps: 28,
-        guidance_scale: 3.5,
+        guidance_scale: 4.0,
         num_images: 1,
         output_format: 'jpeg',
         enable_safety_checker: false,
@@ -67,13 +69,12 @@ export async function POST(request) {
 }
 
 // Pure JS PNG generation — white circle on black background
-// No external dependencies, works in Vercel serverless
 function generateMaskPNGDataUri(width, height, cx, cy, radius) {
   const zlib = require('zlib')
 
   const rawData = []
   for (let y = 0; y < height; y++) {
-    rawData.push(0) // PNG filter type: None
+    rawData.push(0)
     for (let x = 0; x < width; x++) {
       const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2)
       rawData.push(dist <= radius ? 255 : 0)
@@ -84,12 +85,11 @@ function generateMaskPNGDataUri(width, height, cx, cy, radius) {
   const compressed = zlib.deflateSync(rawBytes)
 
   const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
-
   const ihdrData = Buffer.alloc(13)
   ihdrData.writeUInt32BE(width, 0)
   ihdrData.writeUInt32BE(height, 4)
-  ihdrData[8] = 8  // bit depth
-  ihdrData[9] = 0  // grayscale
+  ihdrData[8] = 8
+  ihdrData[9] = 0
   ihdrData[10] = 0
   ihdrData[11] = 0
   ihdrData[12] = 0
