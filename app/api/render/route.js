@@ -1,14 +1,5 @@
 import { NextResponse } from 'next/server'
 
-// App Router body size limit
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '10mb',
-    },
-  },
-}
-
 export async function POST(request) {
   try {
     // Read body as text first to check if it's being truncated
