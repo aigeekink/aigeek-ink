@@ -38,9 +38,31 @@ async function convertToJpegBase64(file, maxSize = 1024) {
   })
 }
 
-// Remove only the BACKGROUND white — not interior white
-// Uses flood fill from image edges so interior white (design details) stays intact
-// e.g. skull eye sockets, moon highlights, lettering negative space all preserved
+// Detect if tattoo image has significant colour (not just black/grey/white)
+// Samples pixels and checks average colour saturation
+function detectIsColoured(img, threshold = 30) {
+  const canvas = document.createElement('canvas')
+  const sampleSize = 100
+  canvas.width = sampleSize
+  canvas.height = sampleSize
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(img, 0, 0, sampleSize, sampleSize)
+  const data = ctx.getImageData(0, 0, sampleSize, sampleSize).data
+  let totalSaturation = 0
+  let pixelCount = 0
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3]
+    if (a < 128) continue // skip transparent
+    const max = Math.max(r, g, b)
+    const min = Math.min(r, g, b)
+    totalSaturation += max - min // colour range — 0 = grey, high = coloured
+    pixelCount++
+  }
+  const avgSaturation = pixelCount > 0 ? totalSaturation / pixelCount : 0
+  return avgSaturation > threshold
+}
+
+// Remove background white via edge flood fill — preserves interior design white
 function removeBackgroundWhite(img, threshold = 235) {
   const w = img.naturalWidth
   const h = img.naturalHeight
@@ -49,83 +71,48 @@ function removeBackgroundWhite(img, threshold = 235) {
   canvas.height = h
   const ctx = canvas.getContext('2d')
   ctx.drawImage(img, 0, 0)
-
   const imageData = ctx.getImageData(0, 0, w, h)
   const data = imageData.data
-  const visited = new Uint8Array(w * h) // 0 = unvisited, 1 = visited
+  const visited = new Uint8Array(w * h)
 
-  // Check if a pixel is near-white (background candidate)
-  const isNearWhite = (idx) => {
-    return data[idx] > threshold &&
-           data[idx + 1] > threshold &&
-           data[idx + 2] > threshold
-  }
+  const isNearWhite = (idx) =>
+    data[idx] > threshold && data[idx+1] > threshold && data[idx+2] > threshold
 
-  // BFS flood fill from all edge pixels
   const queue = []
-
-  // Seed from all four edges
   for (let x = 0; x < w; x++) {
-    // Top edge
-    const topIdx = x * 4
-    if (!visited[x] && isNearWhite(topIdx)) {
-      queue.push(x)
-      visited[x] = 1
-    }
-    // Bottom edge
-    const botPx = (h - 1) * w + x
-    const botIdx = botPx * 4
-    if (!visited[botPx] && isNearWhite(botIdx)) {
-      queue.push(botPx)
-      visited[botPx] = 1
-    }
+    const top = x
+    if (!visited[top] && isNearWhite(top * 4)) { queue.push(top); visited[top] = 1 }
+    const bot = (h - 1) * w + x
+    if (!visited[bot] && isNearWhite(bot * 4)) { queue.push(bot); visited[bot] = 1 }
   }
   for (let y = 0; y < h; y++) {
-    // Left edge
-    const leftPx = y * w
-    const leftIdx = leftPx * 4
-    if (!visited[leftPx] && isNearWhite(leftIdx)) {
-      queue.push(leftPx)
-      visited[leftPx] = 1
-    }
-    // Right edge
-    const rightPx = y * w + (w - 1)
-    const rightIdx = rightPx * 4
-    if (!visited[rightPx] && isNearWhite(rightIdx)) {
-      queue.push(rightPx)
-      visited[rightPx] = 1
-    }
+    const left = y * w
+    if (!visited[left] && isNearWhite(left * 4)) { queue.push(left); visited[left] = 1 }
+    const right = y * w + (w - 1)
+    if (!visited[right] && isNearWhite(right * 4)) { queue.push(right); visited[right] = 1 }
   }
 
-  // BFS — spread to neighbouring near-white pixels
-  const neighbors = [-1, 1, -w, w] // left, right, up, down
+  const neighbors = [-1, 1, -w, w]
   while (queue.length > 0) {
     const px = queue.shift()
-    // Make this background pixel transparent
-    const idx = px * 4
-    data[idx + 3] = 0
-
+    data[px * 4 + 3] = 0
     for (const delta of neighbors) {
-      const neighbor = px + delta
-      if (neighbor < 0 || neighbor >= w * h) continue
-      if (visited[neighbor]) continue
-      // Boundary check to prevent wrapping
+      const nb = px + delta
+      if (nb < 0 || nb >= w * h) continue
+      if (visited[nb]) continue
       if (delta === -1 && px % w === 0) continue
       if (delta === 1 && px % w === w - 1) continue
-      const nIdx = neighbor * 4
-      if (isNearWhite(nIdx)) {
-        visited[neighbor] = 1
-        queue.push(neighbor)
-      }
+      if (isNearWhite(nb * 4)) { visited[nb] = 1; queue.push(nb) }
     }
   }
-
   ctx.putImageData(imageData, 0, 0)
   return canvas
 }
 
-// Composite tattoo onto body photo at click position
-async function compositeImages(bodyBase64, tattooBase64, cx, cy, radius, bodyW, bodyH) {
+// Composite tattoo onto body photo
+// Uses multiply for black ink (darkens skin naturally)
+// Uses normal blend at lower opacity for coloured tattoos (preserves colour)
+async function compositeImages(bodyBase64, tattooBase64, cx, cy, radius, bodyW, bodyH, isColoured) {
   return new Promise((resolve, reject) => {
     const bodyImg = new Image()
     const tattooImg = new Image()
@@ -139,23 +126,33 @@ async function compositeImages(bodyBase64, tattooBase64, cx, cy, radius, bodyW, 
         canvas.height = bodyH
         const ctx = canvas.getContext('2d')
 
-        // Draw body photo as base
         ctx.drawImage(bodyImg, 0, 0, bodyW, bodyH)
 
-        // Remove background white via edge flood fill — preserves interior design white
         const cleanTattoo = removeBackgroundWhite(tattooImg)
 
-        // Scale tattoo to fit within mask circle
         const diameter = radius * 2 * 0.90
         const aspect = tattooImg.naturalWidth / tattooImg.naturalHeight
         let tw, th
         if (aspect >= 1) { tw = diameter; th = diameter / aspect }
         else { th = diameter; tw = diameter * aspect }
 
-        // Draw tattoo with multiply blend — ink darkens skin naturally
-        ctx.globalAlpha = 0.88
-        ctx.globalCompositeOperation = 'multiply'
-        ctx.drawImage(cleanTattoo, cx - tw / 2, cy - th / 2, tw, th)
+        if (isColoured) {
+          // For coloured tattoos: draw twice
+          // First pass: multiply at low opacity to blend dark outlines with skin
+          ctx.globalAlpha = 0.6
+          ctx.globalCompositeOperation = 'multiply'
+          ctx.drawImage(cleanTattoo, cx - tw / 2, cy - th / 2, tw, th)
+          // Second pass: normal blend at low opacity to preserve colour
+          ctx.globalAlpha = 0.55
+          ctx.globalCompositeOperation = 'source-over'
+          ctx.drawImage(cleanTattoo, cx - tw / 2, cy - th / 2, tw, th)
+        } else {
+          // For black ink: multiply is perfect — darkens skin, white becomes transparent
+          ctx.globalAlpha = 0.92
+          ctx.globalCompositeOperation = 'multiply'
+          ctx.drawImage(cleanTattoo, cx - tw / 2, cy - th / 2, tw, th)
+        }
+
         ctx.globalAlpha = 1
         ctx.globalCompositeOperation = 'source-over'
 
@@ -181,6 +178,7 @@ export default function RenderPage() {
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 })
   const [tattooBase64, setTattooBase64] = useState(null)
   const [tattooLoaded, setTattooLoaded] = useState(false)
+  const [isColoured, setIsColoured] = useState(false)
   const [clickPos, setClickPos] = useState(null)
   const [maskRadius, setMaskRadius] = useState(80)
   const [resultUrl, setResultUrl] = useState(null)
@@ -213,16 +211,13 @@ export default function RenderPage() {
 
     const ctx = canvas.getContext('2d')
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-
     ctx.fillStyle = 'rgba(0,0,0,0.45)'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
-
     ctx.globalCompositeOperation = 'destination-out'
     ctx.beginPath()
     ctx.arc(displayX, displayY, displayRadius, 0, Math.PI * 2)
     ctx.fill()
     ctx.globalCompositeOperation = 'source-over'
-
     ctx.strokeStyle = '#fff'
     ctx.lineWidth = 2
     ctx.setLineDash([6, 4])
@@ -230,7 +225,6 @@ export default function RenderPage() {
     ctx.arc(displayX, displayY, displayRadius, 0, Math.PI * 2)
     ctx.stroke()
     ctx.setLineDash([])
-
     ctx.strokeStyle = 'rgba(255,255,255,0.8)'
     ctx.lineWidth = 1
     ctx.beginPath()
@@ -265,8 +259,15 @@ export default function RenderPage() {
     if (!file) return
     try {
       const { base64 } = await convertToJpegBase64(file, 512)
-      setTattooBase64(base64)
-      setTattooLoaded(true)
+      // Detect colour before storing
+      const img = new Image()
+      img.onload = () => {
+        const coloured = detectIsColoured(img)
+        setIsColoured(coloured)
+        setTattooBase64(base64)
+        setTattooLoaded(true)
+      }
+      img.src = base64
     } catch (err) {
       setError('Could not load tattoo image. Please try again.')
     }
@@ -299,7 +300,8 @@ export default function RenderPage() {
         bodyPhoto, tattooBase64,
         clickPos.x, clickPos.y,
         maskRadius,
-        bodySize.width, bodySize.height
+        bodySize.width, bodySize.height,
+        isColoured
       )
 
       const response = await fetch('/api/render', {
@@ -307,11 +309,9 @@ export default function RenderPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           compositeImageBase64: compositeBase64,
-          clickX: clickPos.x,
-          clickY: clickPos.y,
-          maskRadius,
           imageWidth: bodySize.width,
           imageHeight: bodySize.height,
+          isColoured,
         }),
       })
 
@@ -331,7 +331,7 @@ export default function RenderPage() {
   const handleStartOver = () => {
     setStep(STEPS.UPLOAD_PHOTO); setBodyPhoto(null); setBodyPhotoUrl(null)
     setBodySize({ width: 0, height: 0 }); setClickPos(null); setResultUrl(null)
-    setError(null); setTattooBase64(null); setTattooLoaded(false)
+    setError(null); setTattooBase64(null); setTattooLoaded(false); setIsColoured(false)
   }
 
   const renderButtonEnabled = step === STEPS.ADJUST_SIZE && clickPos && tattooLoaded
@@ -385,7 +385,7 @@ export default function RenderPage() {
             </div>
           ) : (
             <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '0.6rem 1rem', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.8rem', color: '#166534' }}>✓ Tattoo design loaded</span>
+              <span style={{ fontSize: '0.8rem', color: '#166534' }}>✓ {isColoured ? 'Colour' : 'Black ink'} tattoo loaded</span>
               <label style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#166534', cursor: 'pointer', textDecoration: 'underline' }}>
                 Change
                 <input type="file" accept="image/*" onChange={handleTattooUpload} style={{ display: 'none' }} />
