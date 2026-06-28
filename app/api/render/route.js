@@ -2,17 +2,14 @@ import { NextResponse } from 'next/server'
 
 export async function POST(request) {
   try {
-    // Read body as text first to check if it's being truncated
     const text = await request.text()
-    
+
     let parsedBody
     try {
       parsedBody = JSON.parse(text)
     } catch (parseErr) {
-      console.error('JSON parse failed. Body length:', text.length)
-      console.error('Parse error:', parseErr.message)
       return NextResponse.json(
-        { error: `JSON parse failed — body was ${text.length} chars. Try a smaller image.` },
+        { error: `Image too large — body was ${Math.round(text.length / 1024)}KB. Try a smaller photo.` },
         { status: 400 }
       )
     }
@@ -22,9 +19,6 @@ export async function POST(request) {
     if (!compositeImageBase64) {
       return NextResponse.json({ error: 'Missing composite image.' }, { status: 400 })
     }
-    if (typeof clickX !== 'number' || typeof clickY !== 'number') {
-      return NextResponse.json({ error: 'Invalid click coordinates.' }, { status: 400 })
-    }
 
     const cx = Math.round(clickX)
     const cy = Math.round(clickY)
@@ -32,12 +26,11 @@ export async function POST(request) {
     const w = Math.round(imageWidth)
     const h = Math.round(imageHeight)
 
-    console.log(`Render request: ${w}x${h}, mask at (${cx},${cy}) r=${radius}, payload=${text.length} chars`)
+    console.log(`Render: ${w}x${h} image, mask at (${cx},${cy}) r=${radius}, payload=${Math.round(text.length/1024)}KB`)
 
-    // Generate PNG mask
     const maskDataUri = generateMaskPNGDataUri(w, h, cx, cy, radius)
 
-    const prompt = `Make this tattoo look freshly inked on real skin. Bold dark rich black ink with high contrast and crisp clean lines. The tattoo is newly done today — deep saturated blacks, no fading, sharp edges. Skin texture and pores visible through the ink. Surrounding skin completely natural. Professional tattoo photography, sharp focus.`
+    const prompt = `Photorealistic tattoo on human skin. The tattoo design shown is freshly inked — preserve the exact design, lines, and shapes already visible. Make the ink look deeply embedded in skin with natural skin texture and pores showing through. Bold dark blacks, crisp edges. Do not change or replace the tattoo design. Surrounding skin natural and unmodified.`
 
     const response = await fetch('https://fal.run/fal-ai/flux-pro/v1/fill', {
       method: 'POST',
@@ -50,7 +43,8 @@ export async function POST(request) {
         image_url: compositeImageBase64,
         mask_url: maskDataUri,
         num_inference_steps: 28,
-        guidance_scale: 4.0,
+        guidance_scale: 6.0,
+        strength: 0.35,
         num_images: 1,
         output_format: 'jpeg',
         enable_safety_checker: false,
@@ -65,9 +59,7 @@ export async function POST(request) {
     const data = await response.json()
     const resultUrl = data.images?.[0]?.url
 
-    if (!resultUrl) {
-      throw new Error('No image returned from render.')
-    }
+    if (!resultUrl) throw new Error('No image returned from render.')
 
     return NextResponse.json({ resultUrl })
 
@@ -96,20 +88,19 @@ function generateMaskPNGDataUri(width, height, cx, cy, radius) {
   ihdrData.writeUInt32BE(width, 0)
   ihdrData.writeUInt32BE(height, 4)
   ihdrData[8] = 8; ihdrData[9] = 0
+  ihdrData[10] = 0; ihdrData[11] = 0; ihdrData[12] = 0
   const ihdr = makeChunk('IHDR', ihdrData)
   const idat = makeChunk('IDAT', compressed)
   const iend = makeChunk('IEND', Buffer.alloc(0))
-  const png = Buffer.concat([sig, ihdr, idat, iend])
-  return `data:image/png;base64,${png.toString('base64')}`
+  return `data:image/png;base64,${Buffer.concat([sig, ihdr, idat, iend]).toString('base64')}`
 }
 
 function makeChunk(type, data) {
   const typeBuffer = Buffer.from(type, 'ascii')
   const lenBuffer = Buffer.alloc(4)
   lenBuffer.writeUInt32BE(data.length, 0)
-  const crcInput = Buffer.concat([typeBuffer, data])
   const crcBuffer = Buffer.alloc(4)
-  crcBuffer.writeUInt32BE(crc32(crcInput), 0)
+  crcBuffer.writeUInt32BE(crc32(Buffer.concat([typeBuffer, data])), 0)
   return Buffer.concat([lenBuffer, typeBuffer, data, crcBuffer])
 }
 
