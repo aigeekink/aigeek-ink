@@ -11,14 +11,12 @@ const STEPS = {
   ERROR: 'error',
 }
 
-// Convert any image to JPEG base64, resized to max 1024px
-// Fixes AVIF/HEIC/WebP and keeps payload under Vercel's 4.5MB limit
+// Convert image to JPEG, resized to maxSize
 async function convertToJpegBase64(file, maxSize = 1024) {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const objectUrl = URL.createObjectURL(file)
     img.onload = () => {
-      // Calculate new dimensions maintaining aspect ratio
       let w = img.naturalWidth
       let h = img.naturalHeight
       if (w > maxSize || h > maxSize) {
@@ -33,47 +31,138 @@ async function convertToJpegBase64(file, maxSize = 1024) {
       ctx.fillRect(0, 0, w, h)
       ctx.drawImage(img, 0, 0, w, h)
       URL.revokeObjectURL(objectUrl)
-      resolve({ base64: canvas.toDataURL('image/jpeg', 0.88), width: w, height: h })
+      resolve({ base64: canvas.toDataURL('image/jpeg', 0.85), width: w, height: h })
     }
     img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Failed to load image')) }
     img.src = objectUrl
   })
 }
 
-// Composite tattoo centered at click position, scaled to mask diameter
-// Returns JPEG base64 of the composite
+// Remove only the BACKGROUND white — not interior white
+// Uses flood fill from image edges so interior white (design details) stays intact
+// e.g. skull eye sockets, moon highlights, lettering negative space all preserved
+function removeBackgroundWhite(img, threshold = 235) {
+  const w = img.naturalWidth
+  const h = img.naturalHeight
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  ctx.drawImage(img, 0, 0)
+
+  const imageData = ctx.getImageData(0, 0, w, h)
+  const data = imageData.data
+  const visited = new Uint8Array(w * h) // 0 = unvisited, 1 = visited
+
+  // Check if a pixel is near-white (background candidate)
+  const isNearWhite = (idx) => {
+    return data[idx] > threshold &&
+           data[idx + 1] > threshold &&
+           data[idx + 2] > threshold
+  }
+
+  // BFS flood fill from all edge pixels
+  const queue = []
+
+  // Seed from all four edges
+  for (let x = 0; x < w; x++) {
+    // Top edge
+    const topIdx = x * 4
+    if (!visited[x] && isNearWhite(topIdx)) {
+      queue.push(x)
+      visited[x] = 1
+    }
+    // Bottom edge
+    const botPx = (h - 1) * w + x
+    const botIdx = botPx * 4
+    if (!visited[botPx] && isNearWhite(botIdx)) {
+      queue.push(botPx)
+      visited[botPx] = 1
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    // Left edge
+    const leftPx = y * w
+    const leftIdx = leftPx * 4
+    if (!visited[leftPx] && isNearWhite(leftIdx)) {
+      queue.push(leftPx)
+      visited[leftPx] = 1
+    }
+    // Right edge
+    const rightPx = y * w + (w - 1)
+    const rightIdx = rightPx * 4
+    if (!visited[rightPx] && isNearWhite(rightIdx)) {
+      queue.push(rightPx)
+      visited[rightPx] = 1
+    }
+  }
+
+  // BFS — spread to neighbouring near-white pixels
+  const neighbors = [-1, 1, -w, w] // left, right, up, down
+  while (queue.length > 0) {
+    const px = queue.shift()
+    // Make this background pixel transparent
+    const idx = px * 4
+    data[idx + 3] = 0
+
+    for (const delta of neighbors) {
+      const neighbor = px + delta
+      if (neighbor < 0 || neighbor >= w * h) continue
+      if (visited[neighbor]) continue
+      // Boundary check to prevent wrapping
+      if (delta === -1 && px % w === 0) continue
+      if (delta === 1 && px % w === w - 1) continue
+      const nIdx = neighbor * 4
+      if (isNearWhite(nIdx)) {
+        visited[neighbor] = 1
+        queue.push(neighbor)
+      }
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0)
+  return canvas
+}
+
+// Composite tattoo onto body photo at click position
 async function compositeImages(bodyBase64, tattooBase64, cx, cy, radius, bodyW, bodyH) {
   return new Promise((resolve, reject) => {
     const bodyImg = new Image()
     const tattooImg = new Image()
-    let bodyLoaded = false
-    let tattooLoaded = false
+    let bodyLoaded = false, tattooLoaded = false
 
     const tryComposite = () => {
       if (!bodyLoaded || !tattooLoaded) return
-      const canvas = document.createElement('canvas')
-      canvas.width = bodyW
-      canvas.height = bodyH
-      const ctx = canvas.getContext('2d')
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = bodyW
+        canvas.height = bodyH
+        const ctx = canvas.getContext('2d')
 
-      // Draw body photo
-      ctx.drawImage(bodyImg, 0, 0, bodyW, bodyH)
+        // Draw body photo as base
+        ctx.drawImage(bodyImg, 0, 0, bodyW, bodyH)
 
-      // Scale tattoo to fit circle (with small padding)
-      const diameter = radius * 2 * 0.92
-      const aspect = tattooImg.naturalWidth / tattooImg.naturalHeight
-      let tw, th
-      if (aspect >= 1) { tw = diameter; th = diameter / aspect }
-      else { th = diameter; tw = diameter * aspect }
+        // Remove background white via edge flood fill — preserves interior design white
+        const cleanTattoo = removeBackgroundWhite(tattooImg)
 
-      // Multiply blend makes white background transparent naturally
-      ctx.globalAlpha = 0.90
-      ctx.globalCompositeOperation = 'multiply'
-      ctx.drawImage(tattooImg, cx - tw / 2, cy - th / 2, tw, th)
-      ctx.globalAlpha = 1
-      ctx.globalCompositeOperation = 'source-over'
+        // Scale tattoo to fit within mask circle
+        const diameter = radius * 2 * 0.90
+        const aspect = tattooImg.naturalWidth / tattooImg.naturalHeight
+        let tw, th
+        if (aspect >= 1) { tw = diameter; th = diameter / aspect }
+        else { th = diameter; tw = diameter * aspect }
 
-      resolve(canvas.toDataURL('image/jpeg', 0.88))
+        // Draw tattoo with multiply blend — ink darkens skin naturally
+        ctx.globalAlpha = 0.88
+        ctx.globalCompositeOperation = 'multiply'
+        ctx.drawImage(cleanTattoo, cx - tw / 2, cy - th / 2, tw, th)
+        ctx.globalAlpha = 1
+        ctx.globalCompositeOperation = 'source-over'
+
+        resolve(canvas.toDataURL('image/jpeg', 0.85))
+      } catch (err) {
+        reject(err)
+      }
     }
 
     bodyImg.onload = () => { bodyLoaded = true; tryComposite() }
@@ -87,8 +176,8 @@ async function compositeImages(bodyBase64, tattooBase64, cx, cy, radius, bodyW, 
 
 export default function RenderPage() {
   const [step, setStep] = useState(STEPS.UPLOAD_PHOTO)
-  const [bodyPhoto, setBodyPhoto] = useState(null)        // base64 JPEG
-  const [bodyPhotoUrl, setBodyPhotoUrl] = useState(null)  // for display
+  const [bodyPhoto, setBodyPhoto] = useState(null)
+  const [bodyPhotoUrl, setBodyPhotoUrl] = useState(null)
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 })
   const [tattooBase64, setTattooBase64] = useState(null)
   const [tattooLoaded, setTattooLoaded] = useState(false)
@@ -175,7 +264,6 @@ export default function RenderPage() {
     const file = e.target.files[0]
     if (!file) return
     try {
-      // Tattoo image: resize to 512px max — enough detail, keeps payload small
       const { base64 } = await convertToJpegBase64(file, 512)
       setTattooBase64(base64)
       setTattooLoaded(true)
@@ -207,7 +295,6 @@ export default function RenderPage() {
     setError(null)
 
     try {
-      // Composite client-side first
       const compositeBase64 = await compositeImages(
         bodyPhoto, tattooBase64,
         clickPos.x, clickPos.y,
@@ -263,7 +350,6 @@ export default function RenderPage() {
         <p style={{ fontSize: '0.88rem', color: '#666', lineHeight: '1.6' }}>AI renders your tattoo realistically onto your photo — skin texture, ink depth, the real thing.</p>
       </section>
 
-      {/* UPLOAD */}
       {step === STEPS.UPLOAD_PHOTO && (
         <div style={{ textAlign: 'center', padding: '2rem 1.5rem', border: '2px dashed #e5e5e5', borderRadius: '12px', marginBottom: '1.25rem' }}>
           <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📷</div>
@@ -287,7 +373,6 @@ export default function RenderPage() {
         </div>
       )}
 
-      {/* PLACE + ADJUST */}
       {(step === STEPS.CLICK_TO_PLACE || step === STEPS.ADJUST_SIZE) && bodyPhotoUrl && (
         <>
           {!tattooLoaded ? (
@@ -352,7 +437,6 @@ export default function RenderPage() {
         </>
       )}
 
-      {/* RENDERING */}
       {step === STEPS.RENDERING && (
         <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
           <div style={{ width: '48px', height: '48px', border: '3px solid #f0f0f0', borderTop: '3px solid #111', borderRadius: '50%', margin: '0 auto 1.5rem', animation: 'spin 1s linear infinite' }} />
@@ -362,7 +446,6 @@ export default function RenderPage() {
         </div>
       )}
 
-      {/* RESULT */}
       {step === STEPS.RESULT && resultUrl && (
         <>
           <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #f0f0f0', marginBottom: '1rem' }}>
@@ -385,7 +468,6 @@ export default function RenderPage() {
         </>
       )}
 
-      {/* ERROR */}
       {step === STEPS.ERROR && (
         <div style={{ background: '#fff5f5', border: '1px solid #fecaca', borderRadius: '12px', padding: '1.5rem', marginBottom: '1rem', textAlign: 'center' }}>
           <p style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>⚠️</p>
