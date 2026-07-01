@@ -47,23 +47,37 @@ const TEMPLATES = [
   { id: 'md_thigh',       file: 'male_dark_thigh.png',          label: 'Thigh',        gender: 'male',   tone: 'dark'  },
 ]
 
-// Load image with crossOrigin so canvas can read its pixels (needed for mask)
-function loadImg(src, crossOrigin = true) {
+// Load image — crossOrigin required for canvas pixel operations
+function loadImg(src) {
   return new Promise((resolve) => {
     const img = new Image()
-    if (crossOrigin) img.crossOrigin = 'anonymous'
+    img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
     img.onerror = () => resolve(null)
     img.src = src
   })
 }
 
-// Scale canvas dimensions to max 800px wide keeping aspect ratio
-// This keeps file sizes reasonable and avoids giant canvas
-function scaleDimensions(nw, nh, maxW = 800) {
-  if (nw <= maxW) return { w: nw, h: nh }
-  const ratio = nh / nw
-  return { w: maxW, h: Math.round(maxW * ratio) }
+// FIX 2: Convert black/white mask PNG into alpha mask
+// destination-in uses ALPHA channel, not visible colour
+// White pixels (brightness > 128) → alpha 255 (keep tattoo)
+// Black pixels (brightness ≤ 128) → alpha 0 (cut tattoo)
+function makeAlphaMask(maskImg) {
+  const w = maskImg.naturalWidth || maskImg.width
+  const h = maskImg.naturalHeight || maskImg.height
+  const c = document.createElement('canvas')
+  c.width = w; c.height = h
+  const ctx = c.getContext('2d')
+  ctx.drawImage(maskImg, 0, 0, w, h)
+  const id = ctx.getImageData(0, 0, w, h)
+  const d = id.data
+  for (let i = 0; i < d.length; i += 4) {
+    const brightness = (d[i] + d[i+1] + d[i+2]) / 3
+    const alpha = brightness > 128 ? 255 : 0
+    d[i] = 255; d[i+1] = 255; d[i+2] = 255; d[i+3] = alpha
+  }
+  ctx.putImageData(id, 0, 0)
+  return c
 }
 
 function removeBackgroundWhite(imgEl, threshold = 235) {
@@ -124,38 +138,55 @@ export default function TryOnPage() {
   const [hasMask, setHasMask] = useState(false)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [error, setError] = useState(null)
-  const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 })
+
+  // FIX 1: Store template dims in state — canvas sized AFTER place mode renders
+  const [templateDims, setTemplateDims] = useState(null)
 
   // Placement controls
   const [posX, setPosX] = useState(50)
   const [posY, setPosY] = useState(50)
-  const [size, setSize] = useState(0.3)   // starts as 30% of canvas width
+  const [size, setSize] = useState(0.18)   // % of Math.min(cw, ch)
   const [rotation, setRotation] = useState(0)
   const [opacity, setOpacity] = useState(85)
   const [mirror, setMirror] = useState(false)
 
-  const canvasRef   = useRef(null)
-  const bgImgRef    = useRef(null)
-  const maskImgRef  = useRef(null)
-  const tattooRef   = useRef(null)
-  const canvasSzRef = useRef({ w: 0, h: 0 })
-  const rafRef      = useRef(null)
-  const isDragging  = useRef(false)
-  const lastPtr     = useRef({ x: 0, y: 0 })
+  const canvasRef  = useRef(null)
+  const bgImgRef   = useRef(null)
+  const maskRef    = useRef(null)  // alpha mask canvas
+  const tattooRef  = useRef(null)
+  const dimsRef    = useRef(null)
+  const rafRef     = useRef(null)
+  const isDragging = useRef(false)
+  const lastPtr    = useRef({ x: 0, y: 0 })
 
   useEffect(() => { tattooRef.current = tattooClean }, [tattooClean])
-  useEffect(() => { canvasSzRef.current = canvasSize }, [canvasSize])
+  useEffect(() => { dimsRef.current = templateDims }, [templateDims])
+
+  // FIX 4: Auto-load tattoo from sessionStorage (generate → tryon flow)
+  useEffect(() => {
+    const url = sessionStorage.getItem('aigeek_tattoo_url')
+    if (!url) return
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      setIsColoured(detectIsColoured(img))
+      setTattooClean(removeBackgroundWhite(img))
+      setTattooLoaded(true)
+    }
+    img.src = url
+  }, [])
 
   // ─── DRAW ───────────────────────────────────────────────────────────────
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     const bg = bgImgRef.current
-    if (!canvas || !bg) return
+    const dims = dimsRef.current
+    if (!canvas || !bg || !dims) return
 
-    const { w: cw, h: ch } = canvasSzRef.current
-    if (!cw || !ch) return
-
+    const cw = dims.w
+    const ch = dims.h
     const ctx = canvas.getContext('2d')
+
     ctx.clearRect(0, 0, cw, ch)
     ctx.drawImage(bg, 0, 0, cw, ch)
 
@@ -165,12 +196,14 @@ export default function TryOnPage() {
     const tx = (posX / 100) * cw
     const ty = (posY / 100) * ch
 
-    // size is a fraction of canvas width
-    const tattooDisplayW = size * cw
-    const tattooAspect = tattoo.width / tattoo.height
-    const tattooDisplayH = tattooDisplayW / tattooAspect
-    const scaleX = tattooDisplayW / tattoo.width
-    const scaleY = tattooDisplayH / tattoo.height
+    // FIX 3: Size as % of smaller canvas dimension — resolution-independent
+    const base = Math.min(cw, ch)
+    const targetW = base * size
+    const scale = targetW / tattoo.width
+    // Maintain aspect ratio
+    const scaleY = (targetW / tattoo.width) * (tattoo.width / tattoo.height) === scale
+      ? scale
+      : scale
 
     const rad = (rotation * Math.PI) / 180
 
@@ -182,21 +215,22 @@ export default function TryOnPage() {
     tctx.save()
     tctx.translate(tx, ty)
     tctx.rotate(rad)
-    if (mirror) tctx.scale(-scaleX, scaleY)
-    else tctx.scale(scaleX, scaleY)
+    if (mirror) tctx.scale(-scale, scale)
+    else tctx.scale(scale, scale)
     tctx.globalAlpha = opacity / 100
     tctx.drawImage(tattoo, -tattoo.width / 2, -tattoo.height / 2)
     tctx.restore()
 
-    // Apply skin mask via destination-in
-    const mask = maskImgRef.current
+    // FIX 2: Apply alpha mask — destination-in now works correctly
+    // because makeAlphaMask converted white→alpha255, black→alpha0
+    const mask = maskRef.current
     if (mask) {
       tctx.globalCompositeOperation = 'destination-in'
       tctx.drawImage(mask, 0, 0, cw, ch)
       tctx.globalCompositeOperation = 'source-over'
     }
 
-    // Composite onto bg
+    // Composite tattoo onto background with multiply blend
     ctx.globalCompositeOperation = 'multiply'
     ctx.drawImage(tmp, 0, 0)
     ctx.globalCompositeOperation = 'source-over'
@@ -207,9 +241,22 @@ export default function TryOnPage() {
     rafRef.current = requestAnimationFrame(() => { rafRef.current = null; draw() })
   }, [draw])
 
+  // FIX 1: Set canvas dimensions AFTER place mode has rendered
+  // This ensures canvasRef.current actually exists when we set width/height
+  useEffect(() => {
+    if (mode !== 'place') return
+    if (!templateDims) return
+    if (!canvasRef.current) return
+
+    const canvas = canvasRef.current
+    canvas.width = templateDims.w
+    canvas.height = templateDims.h
+    scheduleRedraw()
+  }, [mode, templateDims, scheduleRedraw])
+
   useEffect(() => {
     scheduleRedraw()
-  }, [posX, posY, size, rotation, opacity, mirror, tattooClean, canvasSize, scheduleRedraw])
+  }, [posX, posY, size, rotation, opacity, mirror, tattooClean, scheduleRedraw])
 
   // ─── LOAD TEMPLATE ──────────────────────────────────────────────────────
   const loadTemplate = async (template) => {
@@ -223,27 +270,29 @@ export default function TryOnPage() {
       ])
       if (!bgImg) throw new Error('Could not load template')
 
-      // Scale to max 800px to keep canvas manageable
-      const { w, h } = scaleDimensions(bgImg.naturalWidth, bgImg.naturalHeight, 800)
-
       bgImgRef.current = bgImg
-      maskImgRef.current = maskImg
-      setHasMask(!!maskImg)
 
-      // Set canvas dimensions FIRST, then update state
-      const canvas = canvasRef.current
-      if (canvas) { canvas.width = w; canvas.height = h }
-      canvasSzRef.current = { w, h }
-      setCanvasSize({ w, h })
+      // FIX 2: Convert black/white mask to alpha mask
+      const alphaMask = maskImg ? makeAlphaMask(maskImg) : null
+      maskRef.current = alphaMask
+      setHasMask(!!alphaMask)
+
+      // Scale to max 800px wide for performance
+      const nw = bgImg.naturalWidth
+      const nh = bgImg.naturalHeight
+      const maxW = 800
+      const w = nw > maxW ? maxW : nw
+      const h = nw > maxW ? Math.round(nh * maxW / nw) : nh
+
+      // FIX 1: Store dims in state — canvas sized in useEffect after render
+      setTemplateDims({ w, h })
 
       // Reset placement
       setPosX(50); setPosY(50)
-      setSize(0.3)  // tattoo starts at 30% of canvas width — sensible default
-      setRotation(0); setMirror(false)
-      setMode('place')
+      setSize(0.18); setRotation(0); setMirror(false)
 
-      // Draw immediately after state is set
-      requestAnimationFrame(() => draw())
+      // Switch to place mode — canvas renders, then useEffect sets dimensions
+      setMode('place')
     } catch (e) {
       setError('Could not load template. Please try again.')
     } finally {
@@ -262,13 +311,17 @@ export default function TryOnPage() {
         setIsColoured(detectIsColoured(img))
         setTattooClean(removeBackgroundWhite(img))
         setTattooLoaded(true)
-        // Store in sessionStorage for /render page handoff only
-        // Don't auto-reload on next visit — user must explicitly upload
         sessionStorage.setItem('aigeek_tattoo_url', ev.target.result)
       }
       img.src = ev.target.result
     }
     reader.readAsDataURL(file)
+  }
+
+  const clearTattoo = () => {
+    setTattooClean(null)
+    setTattooLoaded(false)
+    sessionStorage.removeItem('aigeek_tattoo_url')
   }
 
   // ─── DRAG ───────────────────────────────────────────────────────────────
@@ -354,10 +407,17 @@ export default function TryOnPage() {
                 {tattooLoaded ? 'Select a body template below' : 'Upload a design or generate one first'}
               </p>
             </div>
-            <label style={{ display: 'inline-block', background: '#111', color: '#fff', padding: '6px 14px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              {tattooLoaded ? 'Change design' : 'Upload tattoo'}
-              <input type="file" accept="image/*" onChange={handleTattooUpload} style={{ display: 'none' }} />
-            </label>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {tattooLoaded && (
+                <button onClick={clearTattoo} style={{ background: 'none', border: 'none', fontSize: '0.72rem', color: '#999', cursor: 'pointer', textDecoration: 'underline' }}>
+                  Clear
+                </button>
+              )}
+              <label style={{ display: 'inline-block', background: '#111', color: '#fff', padding: '6px 14px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                {tattooLoaded ? 'Change design' : 'Upload tattoo'}
+                <input type="file" accept="image/*" onChange={handleTattooUpload} style={{ display: 'none' }} />
+              </label>
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
@@ -432,7 +492,7 @@ export default function TryOnPage() {
           {!hasMask && (
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '0.55rem 1rem', marginBottom: '0.75rem' }}>
               <p style={{ fontSize: '0.75rem', color: '#92400e', margin: 0 }}>
-                ⚠ Skin mask not yet available for this template — tattoo shows everywhere. Masks being added progressively.
+                ⚠ No skin mask for this template yet — tattoo will show everywhere. Masks being added progressively.
               </p>
             </div>
           )}
@@ -448,7 +508,7 @@ export default function TryOnPage() {
           </div>
 
           <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: '12px', padding: '1rem 1rem 0.25rem', marginBottom: '1rem' }}>
-            <SliderRow label="Size" value={size} min={0.05} max={1} step={0.01} onChange={setSize} display={`${Math.round(size * 100)}%`} />
+            <SliderRow label="Size" value={size} min={0.04} max={0.65} step={0.005} onChange={setSize} display={`${Math.round(size * 100)}%`} />
             <SliderRow label="Rotation" value={rotation} min={-180} max={180} step={1} onChange={setRotation} display={`${rotation}°`} />
             <SliderRow label="Opacity" value={opacity} min={10} max={100} step={1} onChange={setOpacity} display={`${opacity}%`} />
 
@@ -465,7 +525,7 @@ export default function TryOnPage() {
                 style={{ flex: 1, height: '34px', background: '#fff', border: '1px solid #ddd', borderRadius: '8px', fontSize: '0.75rem', color: '#555', cursor: 'pointer' }}>
                 ↺ Reset rotation
               </button>
-              <button onClick={() => { setSize(0.3); setRotation(0); setMirror(false); setPosX(50); setPosY(50) }}
+              <button onClick={() => { setSize(0.18); setRotation(0); setMirror(false); setPosX(50); setPosY(50) }}
                 style={{ flex: 1, height: '34px', background: '#fff', border: '1px solid #ddd', borderRadius: '8px', fontSize: '0.75rem', color: '#555', cursor: 'pointer' }}>
                 ⊙ Reset all
               </button>
