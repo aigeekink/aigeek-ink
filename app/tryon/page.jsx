@@ -127,6 +127,8 @@ function detectIsColoured(imgEl) {
   return count > 0 && (total/count) > 30
 }
 
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
+
 export default function TryOnPage() {
   const [mode, setMode] = useState('pick')
   const [gender, setGender] = useState('male')
@@ -150,17 +152,21 @@ export default function TryOnPage() {
   const [opacity, setOpacity] = useState(85)
   const [mirror, setMirror] = useState(false)
 
-  const canvasRef  = useRef(null)
-  const bgImgRef   = useRef(null)
-  const maskRef    = useRef(null)  // alpha mask canvas
-  const tattooRef  = useRef(null)
-  const dimsRef    = useRef(null)
-  const rafRef     = useRef(null)
-  const isDragging = useRef(false)
-  const lastPtr    = useRef({ x: 0, y: 0 })
+  const canvasRef      = useRef(null)
+  const bgImgRef       = useRef(null)
+  const maskRef        = useRef(null)  // alpha mask canvas
+  const tattooRef      = useRef(null)
+  const dimsRef        = useRef(null)
+  const rafRef         = useRef(null)
+  const isDragging     = useRef(false)
+  const posRef         = useRef({ x: 50, y: 50 })
+  const dragOffsetRef  = useRef({ x: 0, y: 0 })
 
   useEffect(() => { tattooRef.current = tattooClean }, [tattooClean])
   useEffect(() => { dimsRef.current = templateDims }, [templateDims])
+  useEffect(() => {
+    posRef.current = { x: posX, y: posY }
+  }, [posX, posY])
 
   // FIX 4: Auto-load tattoo from sessionStorage (generate → tryon flow)
   useEffect(() => {
@@ -288,6 +294,7 @@ export default function TryOnPage() {
       setTemplateDims({ w, h })
 
       // Reset placement
+      posRef.current = { x: 50, y: 50 }
       setPosX(50); setPosY(50)
       setSize(0.18); setRotation(0); setMirror(false)
 
@@ -321,37 +328,65 @@ export default function TryOnPage() {
   const clearTattoo = () => {
     setTattooClean(null)
     setTattooLoaded(false)
+    setIsColoured(false)
     sessionStorage.removeItem('aigeek_tattoo_url')
   }
 
   // ─── DRAG ───────────────────────────────────────────────────────────────
-  const getScale = () => {
-    const c = canvasRef.current; if (!c) return { sx: 1, sy: 1 }
-    const r = c.getBoundingClientRect()
-    return { sx: 100 / r.width, sy: 100 / r.height }
+  // Pointer Events + pointer capture make dragging feel attached to the cursor/finger.
+  // We map the pointer directly to the tattoo center in canvas-percentage coordinates.
+  const getPointerPercent = (clientX, clientY) => {
+    const canvas = canvasRef.current
+    if (!canvas) return { x: 50, y: 50 }
+
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: ((clientX - rect.left) / rect.width) * 100,
+      y: ((clientY - rect.top) / rect.height) * 100,
+    }
   }
-  const onMouseDown = e => { isDragging.current = true; lastPtr.current = { x: e.clientX, y: e.clientY } }
-  const onMouseMove = e => {
-    if (!isDragging.current) return
-    const { sx, sy } = getScale()
-    setPosX(p => Math.max(0, Math.min(100, p + (e.clientX - lastPtr.current.x) * sx)))
-    setPosY(p => Math.max(0, Math.min(100, p + (e.clientY - lastPtr.current.y) * sy)))
-    lastPtr.current = { x: e.clientX, y: e.clientY }
-  }
-  const onMouseUp = () => { isDragging.current = false }
-  const onTouchStart = e => {
-    if (e.touches.length !== 1) return; e.preventDefault()
+
+  const onPointerDown = (e) => {
+    e.preventDefault()
+
+    const pointer = getPointerPercent(e.clientX, e.clientY)
+    const currentPos = posRef.current
+
+    dragOffsetRef.current = {
+      x: pointer.x - currentPos.x,
+      y: pointer.y - currentPos.y,
+    }
+
     isDragging.current = true
-    lastPtr.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {}
   }
-  const onTouchMove = e => {
-    if (!isDragging.current || e.touches.length !== 1) return; e.preventDefault()
-    const { sx, sy } = getScale()
-    setPosX(p => Math.max(0, Math.min(100, p + (e.touches[0].clientX - lastPtr.current.x) * sx)))
-    setPosY(p => Math.max(0, Math.min(100, p + (e.touches[0].clientY - lastPtr.current.y) * sy)))
-    lastPtr.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+
+  const onPointerMove = (e) => {
+    if (!isDragging.current) return
+    e.preventDefault()
+
+    const pointer = getPointerPercent(e.clientX, e.clientY)
+
+    // Allow slight movement outside the canvas so the mask can clip naturally at edges.
+    const nextX = clamp(pointer.x - dragOffsetRef.current.x, -20, 120)
+    const nextY = clamp(pointer.y - dragOffsetRef.current.y, -20, 120)
+
+    posRef.current = { x: nextX, y: nextY }
+
+    setPosX(nextX)
+    setPosY(nextY)
   }
-  const onTouchEnd = () => { isDragging.current = false }
+
+  const onPointerUp = (e) => {
+    isDragging.current = false
+
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    } catch {}
+  }
 
   // ─── RENDER HANDOFF ─────────────────────────────────────────────────────
   const handleRender = () => {
@@ -499,9 +534,12 @@ export default function TryOnPage() {
 
           <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5', marginBottom: '1rem', touchAction: 'none', userSelect: 'none', background: '#f0f0f0', lineHeight: 0, position: 'relative' }}>
             <canvas ref={canvasRef}
-              style={{ width: '100%', display: 'block', cursor: 'move' }}
-              onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
-              onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} />
+              style={{ width: '100%', display: 'block', cursor: 'grab', touchAction: 'none' }}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+              onLostPointerCapture={onPointerUp} />
             <div style={{ position: 'absolute', bottom: '10px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: '0.7rem', padding: '4px 12px', borderRadius: '999px', whiteSpace: 'nowrap', pointerEvents: 'none' }}>
               Drag to reposition
             </div>
@@ -525,7 +563,7 @@ export default function TryOnPage() {
                 style={{ flex: 1, height: '34px', background: '#fff', border: '1px solid #ddd', borderRadius: '8px', fontSize: '0.75rem', color: '#555', cursor: 'pointer' }}>
                 ↺ Reset rotation
               </button>
-              <button onClick={() => { setSize(0.18); setRotation(0); setMirror(false); setPosX(50); setPosY(50) }}
+              <button onClick={() => { posRef.current = { x: 50, y: 50 }; setSize(0.18); setRotation(0); setMirror(false); setPosX(50); setPosY(50) }}
                 style={{ flex: 1, height: '34px', background: '#fff', border: '1px solid #ddd', borderRadius: '8px', fontSize: '0.75rem', color: '#555', cursor: 'pointer' }}>
                 ⊙ Reset all
               </button>
