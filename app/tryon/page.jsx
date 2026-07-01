@@ -129,132 +129,6 @@ function detectIsColoured(imgEl) {
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
 
-// ─── EXPERIMENTAL MESH WARP PRESETS ──────────────────────────────────────
-// These presets are only for testing the first 3 male/light templates.
-// If a template is not listed here, the try-on behaves exactly as before.
-const WARP_PRESETS = {
-  ml_wrist_up: {
-    type: 'cylinder',
-    label: 'Forearm cylinder',
-    axisAngle: 72,      // direction of the limb in screen/canvas space
-    strength: 0.18,
-    grid: 36,
-  },
-  ml_upperarm: {
-    type: 'cylinder',
-    label: 'Upper-arm cylinder',
-    axisAngle: 86,
-    strength: 0.20,
-    grid: 36,
-  },
-  ml_shoulder: {
-    type: 'bulge',
-    label: 'Shoulder bulge',
-    strength: 0.16,
-    grid: 38,
-  },
-}
-
-function applyMeshWarp(sourceCanvas, preset, options = {}) {
-  if (!preset || preset.type === 'flat') return sourceCanvas
-
-  const strength = (preset.strength || 0) * (options.multiplier ?? 1)
-  if (strength <= 0) return sourceCanvas
-
-  const w = sourceCanvas.width
-  const h = sourceCanvas.height
-  const out = document.createElement('canvas')
-  out.width = w
-  out.height = h
-
-  const octx = out.getContext('2d')
-  octx.clearRect(0, 0, w, h)
-  octx.imageSmoothingEnabled = true
-  octx.imageSmoothingQuality = 'high'
-
-  const grid = preset.grid || 32
-  const cols = grid
-  const rows = Math.max(12, Math.round(grid * h / w))
-  const cellW = w / cols
-  const cellH = h / rows
-
-  const tx = options.tx ?? w / 2
-  const ty = options.ty ?? h / 2
-  const targetW = Math.max(1, options.targetW || w * 0.25)
-  const targetH = Math.max(1, options.targetH || targetW)
-
-  const axisAngle = ((preset.axisAngle ?? 90) * Math.PI) / 180
-  const ax = Math.cos(axisAngle)
-  const ay = Math.sin(axisAngle)
-  const px = -Math.sin(axisAngle)
-  const py = Math.cos(axisAngle)
-
-  // Small overlap avoids hairline cracks between warped tiles.
-  const overlap = 1.25
-
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const sx = col * cellW
-      const sy = row * cellH
-      const sw = Math.min(cellW + overlap, w - sx)
-      const sh = Math.min(cellH + overlap, h - sy)
-
-      const cx = sx + cellW / 2
-      const cy = sy + cellH / 2
-      const lx = cx - tx
-      const ly = cy - ty
-
-      let dx = 0
-      let dy = 0
-
-      if (preset.type === 'cylinder') {
-        // Convert canvas coordinates into limb-local coordinates.
-        // along = direction of arm/leg, cross = across the round surface.
-        const along = (lx * ax + ly * ay) / (targetH * 0.75)
-        const cross = (lx * px + ly * py) / (targetW * 0.55)
-
-        // Keep warp strongest around the tattoo area and fade at edges.
-        const alongFalloff = Math.max(0, 1 - Math.abs(along) * 0.65)
-        const crossAbs = Math.min(1.25, Math.abs(cross))
-        const side = Math.sign(cross) * crossAbs
-
-        // Pull side areas slightly toward the center to mimic wrapping.
-        const pull = -side * crossAbs * targetW * strength * 0.18 * alongFalloff
-
-        // Add a tiny wave along the limb so it does not feel perfectly flat.
-        const curve = Math.sin(side * Math.PI) * targetW * strength * 0.025 * alongFalloff
-
-        dx += px * pull + ax * curve
-        dy += py * pull + ay * curve
-      } else if (preset.type === 'bulge') {
-        const nx = lx / (targetW * 0.62)
-        const ny = ly / (targetH * 0.62)
-        const dist = Math.sqrt(nx * nx + ny * ny)
-        const falloff = Math.max(0, 1 - dist)
-        const push = targetW * strength * 0.11 * falloff * falloff
-
-        // Rounded shoulder/cap effect: center stays stable, edges subtly bend.
-        dx += nx * push
-        dy += ny * push * 0.55
-      } else if (preset.type === 'perspective') {
-        const nx = lx / (targetW * 0.7)
-        const ny = ly / (targetH * 0.7)
-        const falloff = Math.max(0, 1 - Math.abs(nx) * 0.55 - Math.abs(ny) * 0.35)
-        dx += nx * targetW * strength * 0.08 * falloff
-        dy += -nx * targetH * strength * 0.035 * falloff
-      }
-
-      octx.drawImage(
-        sourceCanvas,
-        sx, sy, sw, sh,
-        sx + dx, sy + dy, sw + overlap, sh + overlap
-      )
-    }
-  }
-
-  return out
-}
-
 export default function TryOnPage() {
   const [mode, setMode] = useState('pick')
   const [gender, setGender] = useState('male')
@@ -266,8 +140,6 @@ export default function TryOnPage() {
   const [hasMask, setHasMask] = useState(false)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [error, setError] = useState(null)
-  const [selectedTemplateId, setSelectedTemplateId] = useState(null)
-  const [warpAmount, setWarpAmount] = useState(1)
 
   // FIX 1: Store template dims in state — canvas sized AFTER place mode renders
   const [templateDims, setTemplateDims] = useState(null)
@@ -334,13 +206,17 @@ export default function TryOnPage() {
     const base = Math.min(cw, ch)
     const targetW = base * size
     const scale = targetW / tattoo.width
+    // Maintain aspect ratio
+    const scaleY = (targetW / tattoo.width) * (tattoo.width / tattoo.height) === scale
+      ? scale
+      : scale
 
     const rad = (rotation * Math.PI) / 180
 
     // Draw tattoo to temp canvas
-    let tmp = document.createElement('canvas')
+    const tmp = document.createElement('canvas')
     tmp.width = cw; tmp.height = ch
-    let tctx = tmp.getContext('2d')
+    const tctx = tmp.getContext('2d')
 
     tctx.save()
     tctx.translate(tx, ty)
@@ -350,21 +226,6 @@ export default function TryOnPage() {
     tctx.globalAlpha = opacity / 100
     tctx.drawImage(tattoo, -tattoo.width / 2, -tattoo.height / 2)
     tctx.restore()
-
-    // EXPERIMENTAL: Optional mesh warp layer.
-    // This runs before mask clipping, so the existing mask still controls containment.
-    const warpPreset = selectedTemplateId ? WARP_PRESETS[selectedTemplateId] : null
-    const tattooDisplayH = targetW * (tattoo.height / tattoo.width)
-    if (warpPreset) {
-      tmp = applyMeshWarp(tmp, warpPreset, {
-        tx,
-        ty,
-        targetW,
-        targetH: tattooDisplayH,
-        multiplier: warpAmount,
-      })
-      tctx = tmp.getContext('2d')
-    }
 
     // FIX 2: Apply alpha mask — destination-in now works correctly
     // because makeAlphaMask converted white→alpha255, black→alpha0
@@ -379,7 +240,7 @@ export default function TryOnPage() {
     ctx.globalCompositeOperation = 'multiply'
     ctx.drawImage(tmp, 0, 0)
     ctx.globalCompositeOperation = 'source-over'
-  }, [posX, posY, size, rotation, opacity, mirror, selectedTemplateId, warpAmount])
+  }, [posX, posY, size, rotation, opacity, mirror])
 
   const scheduleRedraw = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
@@ -401,7 +262,7 @@ export default function TryOnPage() {
 
   useEffect(() => {
     scheduleRedraw()
-  }, [posX, posY, size, rotation, opacity, mirror, tattooClean, selectedTemplateId, warpAmount, scheduleRedraw])
+  }, [posX, posY, size, rotation, opacity, mirror, tattooClean, scheduleRedraw])
 
   // ─── LOAD TEMPLATE ──────────────────────────────────────────────────────
   const loadTemplate = async (template) => {
@@ -434,8 +295,6 @@ export default function TryOnPage() {
 
       // Reset placement
       posRef.current = { x: 50, y: 50 }
-      setSelectedTemplateId(template.id)
-      setWarpAmount(1)
       setPosX(50); setPosY(50)
       setSize(0.18); setRotation(0); setMirror(false)
 
@@ -690,9 +549,6 @@ export default function TryOnPage() {
             <SliderRow label="Size" value={size} min={0.04} max={0.65} step={0.005} onChange={setSize} display={`${Math.round(size * 100)}%`} />
             <SliderRow label="Rotation" value={rotation} min={-180} max={180} step={1} onChange={setRotation} display={`${rotation}°`} />
             <SliderRow label="Opacity" value={opacity} min={10} max={100} step={1} onChange={setOpacity} display={`${opacity}%`} />
-            {selectedTemplateId && WARP_PRESETS[selectedTemplateId] && (
-              <SliderRow label="Warp" value={warpAmount} min={0} max={1.5} step={0.05} onChange={setWarpAmount} display={`${Math.round(warpAmount * 100)}%`} />
-            )}
 
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.875rem', borderTop: '1px solid #f0f0f0', paddingTop: '0.75rem', marginTop: '0.25rem' }}>
               <span style={{ fontSize: '0.78rem', color: '#555', fontWeight: '600' }}>↔ Mirror flip</span>
@@ -707,7 +563,7 @@ export default function TryOnPage() {
                 style={{ flex: 1, height: '34px', background: '#fff', border: '1px solid #ddd', borderRadius: '8px', fontSize: '0.75rem', color: '#555', cursor: 'pointer' }}>
                 ↺ Reset rotation
               </button>
-              <button onClick={() => { posRef.current = { x: 50, y: 50 }; setWarpAmount(1); setSize(0.18); setRotation(0); setMirror(false); setPosX(50); setPosY(50) }}
+              <button onClick={() => { posRef.current = { x: 50, y: 50 }; setSize(0.18); setRotation(0); setMirror(false); setPosX(50); setPosY(50) }}
                 style={{ flex: 1, height: '34px', background: '#fff', border: '1px solid #ddd', borderRadius: '8px', fontSize: '0.75rem', color: '#555', cursor: 'pointer' }}>
                 ⊙ Reset all
               </button>
