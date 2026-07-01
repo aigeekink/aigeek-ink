@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 
+// ─── TEMPLATE LIST ────────────────────────────────────────────────────────────
 const TEMPLATES = [
   { id: 'fl_full',        file: 'female_light_full.png',        label: 'Full Body',    gender: 'female', tone: 'light' },
   { id: 'fl_back',        file: 'female_light_back.png',        label: 'Upper Back',   gender: 'female', tone: 'light' },
@@ -47,7 +48,251 @@ const TEMPLATES = [
   { id: 'md_thigh',       file: 'male_dark_thigh.png',          label: 'Thigh',        gender: 'male',   tone: 'dark'  },
 ]
 
-// Load image — crossOrigin required for canvas pixel operations
+// ─── WARP PRESETS ─────────────────────────────────────────────────────────────
+// Each preset defines the warp type and parameters at strength=1.0
+// strength slider scales curve/bulge/topScale/bottomScale linearly
+// No dynamic widthScale — tattoo size stays fully user-controlled
+const WARP_PRESETS = {
+  // ── CYLINDER: forearms and upper arms ────────────────────────────────────
+  // Horizontal slice-based compression: center slices wider, edge slices narrower
+  // Creates the illusion of wrapping around a cylindrical surface
+  fl_wrist_up:   { type: 'cylinder', curve: 0.55, bulge: 0.07, edgeFloor: 0.25, tilt: -0.01, slices: 80 },
+  fd_wrist_up:   { type: 'cylinder', curve: 0.55, bulge: 0.07, edgeFloor: 0.25, tilt: -0.01, slices: 80 },
+  ml_wrist_up:   { type: 'cylinder', curve: 0.60, bulge: 0.08, edgeFloor: 0.23, tilt: -0.01, slices: 80 },
+  md_wrist_up:   { type: 'cylinder', curve: 0.60, bulge: 0.08, edgeFloor: 0.23, tilt: -0.01, slices: 80 },
+
+  fl_wrist_down: { type: 'cylinder', curve: 0.50, bulge: 0.06, edgeFloor: 0.27, tilt: -0.008, slices: 76 },
+  fd_wrist_down: { type: 'cylinder', curve: 0.50, bulge: 0.06, edgeFloor: 0.27, tilt: -0.008, slices: 76 },
+  ml_wrist_down: { type: 'cylinder', curve: 0.54, bulge: 0.06, edgeFloor: 0.25, tilt: -0.01,  slices: 76 },
+  md_wrist_down: { type: 'cylinder', curve: 0.54, bulge: 0.06, edgeFloor: 0.25, tilt: -0.01,  slices: 76 },
+
+  fl_upperarm:   { type: 'cylinder', curve: 0.46, bulge: 0.10, edgeFloor: 0.28, tilt: 0.0,   slices: 88 },
+  fd_upperarm:   { type: 'cylinder', curve: 0.46, bulge: 0.10, edgeFloor: 0.28, tilt: 0.0,   slices: 88 },
+  ml_upperarm:   { type: 'cylinder', curve: 0.50, bulge: 0.11, edgeFloor: 0.26, tilt: 0.0,   slices: 88 },
+  md_upperarm:   { type: 'cylinder', curve: 0.50, bulge: 0.11, edgeFloor: 0.26, tilt: 0.0,   slices: 88 },
+
+  // ── BULGE: rounded convex surfaces ────────────────────────────────────────
+  // Both horizontal AND vertical compression toward edges
+  // Works for shoulder caps, chest, ribcage — domed surfaces
+  ml_shoulder:   { type: 'bulge', curve: 0.40, bulge: 0.16, edgeFloor: 0.35, lift: 0.04, slices: 84 },
+  md_shoulder:   { type: 'bulge', curve: 0.40, bulge: 0.16, edgeFloor: 0.35, lift: 0.04, slices: 84 },
+
+  ml_chest:      { type: 'bulge', curve: 0.26, bulge: 0.11, edgeFloor: 0.46, lift: 0.02, slices: 88 },
+  md_chest:      { type: 'bulge', curve: 0.26, bulge: 0.11, edgeFloor: 0.46, lift: 0.02, slices: 88 },
+
+  fl_sternum:    { type: 'bulge', curve: 0.22, bulge: 0.08, edgeFloor: 0.50, lift: 0.015, slices: 84 },
+  fd_sternum:    { type: 'bulge', curve: 0.22, bulge: 0.08, edgeFloor: 0.50, lift: 0.015, slices: 84 },
+
+  fl_ribcage:    { type: 'bulge', curve: 0.20, bulge: 0.08, edgeFloor: 0.50, lift: 0.01, slices: 84 },
+  fd_ribcage:    { type: 'bulge', curve: 0.20, bulge: 0.08, edgeFloor: 0.50, lift: 0.01, slices: 84 },
+  ml_ribcage:    { type: 'bulge', curve: 0.22, bulge: 0.09, edgeFloor: 0.48, lift: 0.01, slices: 86 },
+  md_ribcage:    { type: 'bulge', curve: 0.22, bulge: 0.09, edgeFloor: 0.48, lift: 0.01, slices: 86 },
+
+  // ── PERSPECTIVE: tapered limbs and flat-with-angle surfaces ───────────────
+  // Row-by-row horizontal scaling — wider at top or bottom depending on viewing angle
+  // Works for ankles (side view), thighs (slightly tapered), collarbone (flat-ish chest)
+  fl_ankle:      { type: 'perspective', topScale: 0.94, bottomScale: 1.10, topShift:  0.00, bottomShift: 0.00, rows: 56 },
+  fd_ankle:      { type: 'perspective', topScale: 0.94, bottomScale: 1.10, topShift:  0.00, bottomShift: 0.00, rows: 56 },
+  ml_ankle:      { type: 'perspective', topScale: 0.92, bottomScale: 1.12, topShift: -0.01, bottomShift: 0.01, rows: 56 },
+  md_ankle:      { type: 'perspective', topScale: 0.92, bottomScale: 1.12, topShift: -0.01, bottomShift: 0.01, rows: 56 },
+
+  fl_thigh_front:{ type: 'perspective', topScale: 1.10, bottomScale: 0.94, topShift:  0.02, bottomShift: -0.01, rows: 60 },
+  fd_thigh_front:{ type: 'perspective', topScale: 1.10, bottomScale: 0.94, topShift:  0.02, bottomShift: -0.01, rows: 60 },
+  fl_thigh_back: { type: 'perspective', topScale: 1.08, bottomScale: 0.96, topShift:  0.01, bottomShift: -0.01, rows: 60 },
+  fd_thigh_back: { type: 'perspective', topScale: 1.08, bottomScale: 0.96, topShift:  0.01, bottomShift: -0.01, rows: 60 },
+  ml_thigh:      { type: 'perspective', topScale: 1.10, bottomScale: 0.94, topShift:  0.02, bottomShift: -0.01, rows: 60 },
+  md_thigh:      { type: 'perspective', topScale: 1.10, bottomScale: 0.94, topShift:  0.02, bottomShift: -0.01, rows: 60 },
+
+  // Neckbone = collarbone/chest from front — very subtle perspective only
+  fl_neckbone:   { type: 'perspective', topScale: 1.02, bottomScale: 0.98, topShift: 0.0, bottomShift: 0.0, rows: 48 },
+  fd_neckbone:   { type: 'perspective', topScale: 1.02, bottomScale: 0.98, topShift: 0.0, bottomShift: 0.0, rows: 48 },
+
+  // ── FLAT: mostly flat or full-body templates ───────────────────────────────
+  fl_back:       { type: 'flat' },
+  fd_back:       { type: 'flat' },
+  ml_back:       { type: 'flat' },
+  md_back:       { type: 'flat' },
+  fl_full:       { type: 'flat' },
+  fd_full:       { type: 'flat' },
+  ml_full:       { type: 'flat' },
+  md_full:       { type: 'flat' },
+}
+
+// ─── WARP DRAWING FUNCTIONS ───────────────────────────────────────────────────
+
+// Pre-render tattoo at target size onto a stamp canvas
+// Mirror is applied here so warp functions receive an already-mirrored stamp
+function buildStamp(tattoo, targetW, mirror) {
+  const scale = targetW / tattoo.width
+  const sw = Math.max(2, Math.round(tattoo.width * scale))
+  const sh = Math.max(2, Math.round(tattoo.height * scale))
+  const c = document.createElement('canvas')
+  c.width = sw; c.height = sh
+  const ctx = c.getContext('2d')
+  if (mirror) {
+    ctx.translate(sw, 0)
+    ctx.scale(-1, 1)
+  }
+  ctx.drawImage(tattoo, 0, 0, sw, sh)
+  return c
+}
+
+// flat: simple centered draw, no distortion
+function drawFlat(ctx, stamp, opacity) {
+  ctx.save()
+  ctx.globalAlpha = opacity / 100
+  ctx.drawImage(stamp, -stamp.width / 2, -stamp.height / 2)
+  ctx.restore()
+}
+
+// cylinder: horizontal slice-based compression
+// Slices at the edges are narrower than at the center, simulating wrapping
+// strength scales curve (how much compression at edges) and bulge (vertical stretch at center)
+function drawCylinder(ctx, stamp, opacity, preset, strength) {
+  const sw = stamp.width
+  const sh = stamp.height
+  const curve    = (preset.curve    ?? 0.45) * strength
+  const bulge    = (preset.bulge    ?? 0.08) * strength
+  const edgeFloor = preset.edgeFloor ?? 0.30  // min width ratio even at edges — not scaled
+  const tilt      = preset.tilt      ?? 0.0   // vertical shift per slice — not scaled
+  const slices    = preset.slices    ?? Math.max(60, Math.round(sw / 6))
+
+  // Pre-compute cosine-based weights for each slice
+  // Weight determines how wide each destination slice is
+  const weights = []
+  let weightSum = 0
+  for (let i = 0; i < slices; i++) {
+    const u = (i + 0.5) / slices
+    const centered = (u - 0.5) * 2          // -1 at left edge, +1 at right edge
+    const edge = Math.abs(centered)
+    const cosine = Math.cos(edge * Math.PI * 0.5)
+    const shaped = Math.pow(Math.max(0, cosine), 1 + curve * 2.0)
+    const w = edgeFloor + (1 - edgeFloor) * shaped
+    weights.push(w)
+    weightSum += w
+  }
+
+  ctx.save()
+  ctx.globalAlpha = opacity / 100
+  let destX = -sw / 2
+
+  for (let i = 0; i < slices; i++) {
+    const srcX = Math.floor((i * sw) / slices)
+    const nextX = Math.floor(((i + 1) * sw) / slices)
+    const srcW = Math.max(1, nextX - srcX)
+
+    const u = (i + 0.5) / slices
+    const centered = (u - 0.5) * 2
+    const curveFactor = 1 - centered * centered   // 0 at edges, 1 at center
+
+    const destW  = sw * (weights[i] / weightSum)
+    const destH  = sh * (1 + bulge * curveFactor)
+    const destY  = (-destH / 2) + (tilt * centered * sh)
+
+    ctx.drawImage(stamp, srcX, 0, srcW, sh, destX, destY, destW + 0.5, destH)
+    destX += destW
+  }
+  ctx.restore()
+}
+
+// bulge: radially symmetric — compresses both horizontally AND vertically at edges
+// Used for shoulder caps, chest, ribcage — domed convex surfaces
+function drawBulge(ctx, stamp, opacity, preset, strength) {
+  const sw = stamp.width
+  const sh = stamp.height
+  const curve    = (preset.curve    ?? 0.28) * strength
+  const bulge    = (preset.bulge    ?? 0.10) * strength
+  const lift     = (preset.lift     ?? 0.015) * strength
+  const edgeFloor = preset.edgeFloor ?? 0.45
+  const slices    = preset.slices    ?? Math.max(56, Math.round(sw / 6))
+
+  const weights = []
+  let weightSum = 0
+  for (let i = 0; i < slices; i++) {
+    const u = (i + 0.5) / slices
+    const centered = (u - 0.5) * 2
+    const edge = Math.abs(centered)
+    const shaped = Math.pow(Math.max(0, Math.cos(edge * Math.PI * 0.5)), 1 + curve * 1.5)
+    const w = edgeFloor + (1 - edgeFloor) * shaped
+    weights.push(w)
+    weightSum += w
+  }
+
+  ctx.save()
+  ctx.globalAlpha = opacity / 100
+  let destX = -sw / 2
+
+  for (let i = 0; i < slices; i++) {
+    const srcX = Math.floor((i * sw) / slices)
+    const nextX = Math.floor(((i + 1) * sw) / slices)
+    const srcW = Math.max(1, nextX - srcX)
+
+    const u = (i + 0.5) / slices
+    const centered = (u - 0.5) * 2
+    const curveFactor = 1 - centered * centered
+
+    const destW = sw * (weights[i] / weightSum)
+    const destH = sh * (1 + bulge * curveFactor)
+    const destY = (-destH / 2) - (lift * curveFactor * sh)
+
+    ctx.drawImage(stamp, srcX, 0, srcW, sh, destX, destY, destW + 0.5, destH)
+    destX += destW
+  }
+  ctx.restore()
+}
+
+// perspective: row-by-row horizontal scaling
+// Each row can be wider or narrower than the tattoo's natural width
+// Used for ankles, thighs, collarbone — slightly tapered or angled surfaces
+function drawPerspective(ctx, stamp, opacity, preset, strength) {
+  const sw = stamp.width
+  const sh = stamp.height
+  // Blend from flat (1.0) toward preset values based on strength
+  const topScale    = 1 + (( preset.topScale    ?? 1.0) - 1) * strength
+  const bottomScale = 1 + (( preset.bottomScale ?? 1.0) - 1) * strength
+  const topShift    = (preset.topShift    ?? 0) * strength
+  const bottomShift = (preset.bottomShift ?? 0) * strength
+  const rows        = preset.rows ?? Math.max(40, Math.round(sh / 7))
+
+  ctx.save()
+  ctx.globalAlpha = opacity / 100
+
+  for (let i = 0; i < rows; i++) {
+    const v0 = i / rows
+    const v1 = (i + 1) / rows
+    const srcY = Math.floor(v0 * sh)
+    const nextY = Math.floor(v1 * sh)
+    const srcH = Math.max(1, nextY - srcY)
+    const t = (v0 + v1) * 0.5   // normalized row position 0=top 1=bottom
+
+    const rowScale = topScale + (bottomScale - topScale) * t
+    const rowShift = topShift + (bottomShift - topShift) * t
+    const rowW = sw * rowScale
+    const destX = (-rowW / 2) + (rowShift * sw)
+    const destY = -sh / 2 + (v0 * sh)
+
+    ctx.drawImage(stamp, 0, srcY, sw, srcH, destX, destY, rowW, srcH + 0.5)
+  }
+  ctx.restore()
+}
+
+// Dispatcher — routes to correct draw function based on preset type
+// strength = 0.0 means flat (all warp functions blend toward flat at strength=0)
+function drawWarped(ctx, stamp, opacity, preset, strength) {
+  if (!preset || strength === 0) {
+    drawFlat(ctx, stamp, opacity)
+    return
+  }
+  switch (preset.type) {
+    case 'cylinder':    drawCylinder(ctx, stamp, opacity, preset, strength); break
+    case 'bulge':       drawBulge(ctx, stamp, opacity, preset, strength);    break
+    case 'perspective': drawPerspective(ctx, stamp, opacity, preset, strength); break
+    default:            drawFlat(ctx, stamp, opacity)
+  }
+}
+
+// ─── IMAGE UTILITIES ─────────────────────────────────────────────────────────
+
 function loadImg(src) {
   return new Promise((resolve) => {
     const img = new Image()
@@ -58,10 +303,6 @@ function loadImg(src) {
   })
 }
 
-// FIX 2: Convert black/white mask PNG into alpha mask
-// destination-in uses ALPHA channel, not visible colour
-// White pixels (brightness > 128) → alpha 255 (keep tattoo)
-// Black pixels (brightness ≤ 128) → alpha 0 (cut tattoo)
 function makeAlphaMask(maskImg) {
   const w = maskImg.naturalWidth || maskImg.width
   const h = maskImg.naturalHeight || maskImg.height
@@ -127,8 +368,9 @@ function detectIsColoured(imgEl) {
   return count > 0 && (total/count) > 30
 }
 
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
+const clamp = (v, min, max) => Math.max(min, Math.min(max, v))
 
+// ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function TryOnPage() {
   const [mode, setMode] = useState('pick')
   const [gender, setGender] = useState('male')
@@ -140,35 +382,35 @@ export default function TryOnPage() {
   const [hasMask, setHasMask] = useState(false)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [error, setError] = useState(null)
-
-  // FIX 1: Store template dims in state — canvas sized AFTER place mode renders
+  const [currentTemplateId, setCurrentTemplateId] = useState(null)
   const [templateDims, setTemplateDims] = useState(null)
 
   // Placement controls
   const [posX, setPosX] = useState(50)
   const [posY, setPosY] = useState(50)
-  const [size, setSize] = useState(0.18)   // % of Math.min(cw, ch)
+  const [size, setSize] = useState(0.18)
   const [rotation, setRotation] = useState(0)
   const [opacity, setOpacity] = useState(85)
   const [mirror, setMirror] = useState(false)
+  const [warpStrength, setWarpStrength] = useState(0.70)  // 0.0–1.5, default 70%
 
-  const canvasRef      = useRef(null)
-  const bgImgRef       = useRef(null)
-  const maskRef        = useRef(null)  // alpha mask canvas
-  const tattooRef      = useRef(null)
-  const dimsRef        = useRef(null)
-  const rafRef         = useRef(null)
-  const isDragging     = useRef(false)
-  const posRef         = useRef({ x: 50, y: 50 })
-  const dragOffsetRef  = useRef({ x: 0, y: 0 })
+  const canvasRef     = useRef(null)
+  const bgImgRef      = useRef(null)
+  const maskRef       = useRef(null)
+  const tattooRef     = useRef(null)
+  const dimsRef       = useRef(null)
+  const warpRef       = useRef(0.70)
+  const rafRef        = useRef(null)
+  const isDragging    = useRef(false)
+  const posRef        = useRef({ x: 50, y: 50 })
+  const dragOffsetRef = useRef({ x: 0, y: 0 })
 
   useEffect(() => { tattooRef.current = tattooClean }, [tattooClean])
   useEffect(() => { dimsRef.current = templateDims }, [templateDims])
-  useEffect(() => {
-    posRef.current = { x: posX, y: posY }
-  }, [posX, posY])
+  useEffect(() => { posRef.current = { x: posX, y: posY } }, [posX, posY])
+  useEffect(() => { warpRef.current = warpStrength }, [warpStrength])
 
-  // FIX 4: Auto-load tattoo from sessionStorage (generate → tryon flow)
+  // Auto-load tattoo from sessionStorage (generate → tryon flow)
   useEffect(() => {
     const url = sessionStorage.getItem('aigeek_tattoo_url')
     if (!url) return
@@ -182,7 +424,7 @@ export default function TryOnPage() {
     img.src = url
   }, [])
 
-  // ─── DRAW ───────────────────────────────────────────────────────────────
+  // ─── DRAW ───────────────────────────────────────────────────────────────────
   const draw = useCallback(() => {
     const canvas = canvasRef.current
     const bg = bgImgRef.current
@@ -201,19 +443,21 @@ export default function TryOnPage() {
 
     const tx = (posX / 100) * cw
     const ty = (posY / 100) * ch
-
-    // FIX 3: Size as % of smaller canvas dimension — resolution-independent
-    const base = Math.min(cw, ch)
-    const targetW = base * size
-    const scale = targetW / tattoo.width
-    // Maintain aspect ratio
-    const scaleY = (targetW / tattoo.width) * (tattoo.width / tattoo.height) === scale
-      ? scale
-      : scale
-
     const rad = (rotation * Math.PI) / 180
 
-    // Draw tattoo to temp canvas
+    // Size is % of shorter canvas dimension — resolution-independent, never changes during drag
+    const base = Math.min(cw, ch)
+    const targetW = base * size
+    const stamp = buildStamp(tattoo, targetW, mirror)
+
+    // Get warp preset for current template
+    const preset = WARP_PRESETS[currentTemplateId] ?? { type: 'flat' }
+    const strength = warpRef.current
+
+    // Draw pipeline:
+    // 1. Draw warped tattoo onto temp canvas
+    // 2. Apply skin mask (destination-in) — clips to white areas only
+    // 3. Composite onto background with multiply blend
     const tmp = document.createElement('canvas')
     tmp.width = cw; tmp.height = ch
     const tctx = tmp.getContext('2d')
@@ -221,14 +465,10 @@ export default function TryOnPage() {
     tctx.save()
     tctx.translate(tx, ty)
     tctx.rotate(rad)
-    if (mirror) tctx.scale(-scale, scale)
-    else tctx.scale(scale, scale)
-    tctx.globalAlpha = opacity / 100
-    tctx.drawImage(tattoo, -tattoo.width / 2, -tattoo.height / 2)
+    drawWarped(tctx, stamp, opacity, preset, strength)
     tctx.restore()
 
-    // FIX 2: Apply alpha mask — destination-in now works correctly
-    // because makeAlphaMask converted white→alpha255, black→alpha0
+    // Mask clip — tattoo only shows on white skin areas
     const mask = maskRef.current
     if (mask) {
       tctx.globalCompositeOperation = 'destination-in'
@@ -236,24 +476,20 @@ export default function TryOnPage() {
       tctx.globalCompositeOperation = 'source-over'
     }
 
-    // Composite tattoo onto background with multiply blend
+    // Multiply blend — ink darkens skin naturally
     ctx.globalCompositeOperation = 'multiply'
     ctx.drawImage(tmp, 0, 0)
     ctx.globalCompositeOperation = 'source-over'
-  }, [posX, posY, size, rotation, opacity, mirror])
+  }, [currentTemplateId, posX, posY, size, rotation, opacity, mirror])
 
   const scheduleRedraw = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
     rafRef.current = requestAnimationFrame(() => { rafRef.current = null; draw() })
   }, [draw])
 
-  // FIX 1: Set canvas dimensions AFTER place mode has rendered
-  // This ensures canvasRef.current actually exists when we set width/height
+  // Set canvas dimensions AFTER place mode renders — canvasRef.current exists then
   useEffect(() => {
-    if (mode !== 'place') return
-    if (!templateDims) return
-    if (!canvasRef.current) return
-
+    if (mode !== 'place' || !templateDims || !canvasRef.current) return
     const canvas = canvasRef.current
     canvas.width = templateDims.w
     canvas.height = templateDims.h
@@ -262,9 +498,9 @@ export default function TryOnPage() {
 
   useEffect(() => {
     scheduleRedraw()
-  }, [posX, posY, size, rotation, opacity, mirror, tattooClean, scheduleRedraw])
+  }, [posX, posY, size, rotation, opacity, mirror, warpStrength, tattooClean, scheduleRedraw])
 
-  // ─── LOAD TEMPLATE ──────────────────────────────────────────────────────
+  // ─── LOAD TEMPLATE ──────────────────────────────────────────────────────────
   const loadTemplate = async (template) => {
     setLoadingTemplate(template.id)
     setError(null)
@@ -277,40 +513,31 @@ export default function TryOnPage() {
       if (!bgImg) throw new Error('Could not load template')
 
       bgImgRef.current = bgImg
+      maskRef.current = maskImg ? makeAlphaMask(maskImg) : null
+      setHasMask(!!maskImg)
+      setCurrentTemplateId(template.id)
 
-      // FIX 2: Convert black/white mask to alpha mask
-      const alphaMask = maskImg ? makeAlphaMask(maskImg) : null
-      maskRef.current = alphaMask
-      setHasMask(!!alphaMask)
-
-      // Scale to max 800px wide for performance
       const nw = bgImg.naturalWidth
       const nh = bgImg.naturalHeight
       const maxW = 800
       const w = nw > maxW ? maxW : nw
       const h = nw > maxW ? Math.round(nh * maxW / nw) : nh
-
-      // FIX 1: Store dims in state — canvas sized in useEffect after render
       setTemplateDims({ w, h })
 
-      // Reset placement
       posRef.current = { x: 50, y: 50 }
       setPosX(50); setPosY(50)
       setSize(0.18); setRotation(0); setMirror(false)
-
-      // Switch to place mode — canvas renders, then useEffect sets dimensions
       setMode('place')
-    } catch (e) {
+    } catch {
       setError('Could not load template. Please try again.')
     } finally {
       setLoadingTemplate(null)
     }
   }
 
-  // ─── TATTOO UPLOAD ──────────────────────────────────────────────────────
+  // ─── TATTOO UPLOAD ──────────────────────────────────────────────────────────
   const handleTattooUpload = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
+    const file = e.target.files[0]; if (!file) return
     const reader = new FileReader()
     reader.onload = (ev) => {
       const img = new Image()
@@ -326,19 +553,13 @@ export default function TryOnPage() {
   }
 
   const clearTattoo = () => {
-    setTattooClean(null)
-    setTattooLoaded(false)
-    setIsColoured(false)
+    setTattooClean(null); setTattooLoaded(false); setIsColoured(false)
     sessionStorage.removeItem('aigeek_tattoo_url')
   }
 
-  // ─── DRAG ───────────────────────────────────────────────────────────────
-  // Pointer Events + pointer capture make dragging feel attached to the cursor/finger.
-  // We map the pointer directly to the tattoo center in canvas-percentage coordinates.
+  // ─── POINTER DRAG ───────────────────────────────────────────────────────────
   const getPointerPercent = (clientX, clientY) => {
-    const canvas = canvasRef.current
-    if (!canvas) return { x: 50, y: 50 }
-
+    const canvas = canvasRef.current; if (!canvas) return { x: 50, y: 50 }
     const rect = canvas.getBoundingClientRect()
     return {
       x: ((clientX - rect.left) / rect.width) * 100,
@@ -348,47 +569,29 @@ export default function TryOnPage() {
 
   const onPointerDown = (e) => {
     e.preventDefault()
-
     const pointer = getPointerPercent(e.clientX, e.clientY)
-    const currentPos = posRef.current
-
-    dragOffsetRef.current = {
-      x: pointer.x - currentPos.x,
-      y: pointer.y - currentPos.y,
-    }
-
+    const cur = posRef.current
+    dragOffsetRef.current = { x: pointer.x - cur.x, y: pointer.y - cur.y }
     isDragging.current = true
-
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId)
-    } catch {}
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch {}
   }
 
   const onPointerMove = (e) => {
     if (!isDragging.current) return
     e.preventDefault()
-
     const pointer = getPointerPercent(e.clientX, e.clientY)
-
-    // Allow slight movement outside the canvas so the mask can clip naturally at edges.
     const nextX = clamp(pointer.x - dragOffsetRef.current.x, -20, 120)
     const nextY = clamp(pointer.y - dragOffsetRef.current.y, -20, 120)
-
     posRef.current = { x: nextX, y: nextY }
-
-    setPosX(nextX)
-    setPosY(nextY)
+    setPosX(nextX); setPosY(nextY)
   }
 
   const onPointerUp = (e) => {
     isDragging.current = false
-
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId)
-    } catch {}
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {}
   }
 
-  // ─── RENDER HANDOFF ─────────────────────────────────────────────────────
+  // ─── RENDER HANDOFF ─────────────────────────────────────────────────────────
   const handleRender = () => {
     const canvas = canvasRef.current; if (!canvas) return
     sessionStorage.setItem('aigeek_composite', canvas.toDataURL('image/jpeg', 0.88))
@@ -399,6 +602,10 @@ export default function TryOnPage() {
   }
 
   const filtered = TEMPLATES.filter(t => t.gender === gender && t.tone === tone)
+  const activePreset = WARP_PRESETS[currentTemplateId] ?? { type: 'flat' }
+  const activeWarpLabel = activePreset.type === 'flat' ? 'Flat' :
+    activePreset.type === 'cylinder' ? 'Cylinder' :
+    activePreset.type === 'bulge' ? 'Bulge' : 'Perspective'
 
   const SliderRow = ({ label, value, min, max, step, onChange, display }) => (
     <div style={{ marginBottom: '0.875rem' }}>
@@ -412,6 +619,7 @@ export default function TryOnPage() {
     </div>
   )
 
+  // ─── RENDER ─────────────────────────────────────────────────────────────────
   return (
     <main style={{ fontFamily: 'system-ui,-apple-system,sans-serif', maxWidth: '680px', margin: '0 auto', padding: '0 1rem' }}>
 
@@ -444,9 +652,7 @@ export default function TryOnPage() {
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               {tattooLoaded && (
-                <button onClick={clearTattoo} style={{ background: 'none', border: 'none', fontSize: '0.72rem', color: '#999', cursor: 'pointer', textDecoration: 'underline' }}>
-                  Clear
-                </button>
+                <button onClick={clearTattoo} style={{ background: 'none', border: 'none', fontSize: '0.72rem', color: '#999', cursor: 'pointer', textDecoration: 'underline' }}>Clear</button>
               )}
               <label style={{ display: 'inline-block', background: '#111', color: '#fff', padding: '6px 14px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 {tattooLoaded ? 'Change design' : 'Upload tattoo'}
@@ -485,8 +691,7 @@ export default function TryOnPage() {
                 style={{ borderRadius: '10px', overflow: 'hidden', border: '2px solid ' + (tattooLoaded ? '#e5e5e5' : '#f0f0f0'), cursor: tattooLoaded ? 'pointer' : 'not-allowed', background: '#f5f5f5', position: 'relative', aspectRatio: '2/3' }}
                 onMouseEnter={e => { if (tattooLoaded) e.currentTarget.style.borderColor = '#111' }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = tattooLoaded ? '#e5e5e5' : '#f0f0f0' }}>
-                <img src={`/templates/${t.file}`} alt={t.label}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', opacity: tattooLoaded ? 1 : 0.5 }} />
+                <img src={`/templates/${t.file}`} alt={t.label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', opacity: tattooLoaded ? 1 : 0.5 }} />
                 <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(transparent,rgba(0,0,0,0.72))', padding: '16px 6px 7px' }}>
                   <p style={{ fontSize: '0.68rem', color: '#fff', fontWeight: '600', margin: 0, textAlign: 'center' }}>{t.label}</p>
                 </div>
@@ -527,11 +732,12 @@ export default function TryOnPage() {
           {!hasMask && (
             <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '0.55rem 1rem', marginBottom: '0.75rem' }}>
               <p style={{ fontSize: '0.75rem', color: '#92400e', margin: 0 }}>
-                ⚠ No skin mask for this template yet — tattoo will show everywhere. Masks being added progressively.
+                ⚠ No skin mask for this template yet — tattoo shows everywhere. Masks being added progressively.
               </p>
             </div>
           )}
 
+          {/* Canvas */}
           <div style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid #e5e5e5', marginBottom: '1rem', touchAction: 'none', userSelect: 'none', background: '#f0f0f0', lineHeight: 0, position: 'relative' }}>
             <canvas ref={canvasRef}
               style={{ width: '100%', display: 'block', cursor: 'grab', touchAction: 'none' }}
@@ -545,11 +751,29 @@ export default function TryOnPage() {
             </div>
           </div>
 
+          {/* Controls */}
           <div style={{ background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: '12px', padding: '1rem 1rem 0.25rem', marginBottom: '1rem' }}>
+
+            {/* Warp preset indicator */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.875rem', paddingBottom: '0.75rem', borderBottom: '1px solid #f0f0f0' }}>
+              <span style={{ fontSize: '0.75rem', color: '#888' }}>Surface warp</span>
+              <span style={{ fontSize: '0.73rem', color: '#111', fontWeight: '700', background: '#f0f0f0', padding: '3px 10px', borderRadius: '999px' }}>
+                {activeWarpLabel}
+              </span>
+            </div>
+
             <SliderRow label="Size" value={size} min={0.04} max={0.65} step={0.005} onChange={setSize} display={`${Math.round(size * 100)}%`} />
             <SliderRow label="Rotation" value={rotation} min={-180} max={180} step={1} onChange={setRotation} display={`${rotation}°`} />
             <SliderRow label="Opacity" value={opacity} min={10} max={100} step={1} onChange={setOpacity} display={`${opacity}%`} />
+            <SliderRow
+              label="Warp strength"
+              value={warpStrength}
+              min={0} max={1.5} step={0.05}
+              onChange={setWarpStrength}
+              display={warpStrength === 0 ? 'Off' : `${Math.round(warpStrength * 100)}%`}
+            />
 
+            {/* Mirror toggle */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.875rem', borderTop: '1px solid #f0f0f0', paddingTop: '0.75rem', marginTop: '0.25rem' }}>
               <span style={{ fontSize: '0.78rem', color: '#555', fontWeight: '600' }}>↔ Mirror flip</span>
               <button onClick={() => setMirror(m => !m)}
@@ -558,12 +782,13 @@ export default function TryOnPage() {
               </button>
             </div>
 
+            {/* Quick buttons */}
             <div style={{ display: 'flex', gap: '8px', paddingBottom: '0.875rem' }}>
               <button onClick={() => setRotation(0)}
                 style={{ flex: 1, height: '34px', background: '#fff', border: '1px solid #ddd', borderRadius: '8px', fontSize: '0.75rem', color: '#555', cursor: 'pointer' }}>
                 ↺ Reset rotation
               </button>
-              <button onClick={() => { posRef.current = { x: 50, y: 50 }; setSize(0.18); setRotation(0); setMirror(false); setPosX(50); setPosY(50) }}
+              <button onClick={() => { posRef.current={x:50,y:50}; setSize(0.18); setRotation(0); setMirror(false); setWarpStrength(0.70); setPosX(50); setPosY(50) }}
                 style={{ flex: 1, height: '34px', background: '#fff', border: '1px solid #ddd', borderRadius: '8px', fontSize: '0.75rem', color: '#555', cursor: 'pointer' }}>
                 ⊙ Reset all
               </button>
@@ -574,6 +799,7 @@ export default function TryOnPage() {
             </div>
           </div>
 
+          {/* Actions */}
           <div style={{ display: 'flex', gap: '8px', marginBottom: '0.75rem' }}>
             <button onClick={() => setMode('pick')}
               style={{ flex: 0, padding: '0 16px', height: '50px', background: '#f5f5f5', color: '#555', border: '1px solid #e5e5e5', borderRadius: '10px', fontSize: '0.85rem', cursor: 'pointer' }}>
@@ -590,6 +816,7 @@ export default function TryOnPage() {
         </>
       )}
 
+      {/* Upgrade modal */}
       {showUpgradeModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}
           onClick={() => setShowUpgradeModal(false)}>
