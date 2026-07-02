@@ -120,20 +120,86 @@ const WARP_PRESETS = {
 
 // ─── WARP DRAWING FUNCTIONS ───────────────────────────────────────────────────
 
-// Pre-render tattoo at target size onto a stamp canvas
-// Mirror is applied here so warp functions receive an already-mirrored stamp
-function buildStamp(tattoo, targetW, mirror) {
-  const scale = targetW / tattoo.width
-  const sw = Math.max(2, Math.round(tattoo.width * scale))
-  const sh = Math.max(2, Math.round(tattoo.height * scale))
+// Find the visible ink/design bounds inside the cleaned tattoo canvas.
+// This is important: many generated/uploaded tattoo PNGs have large transparent padding.
+// If we warp the full padded canvas, most of the warp happens on empty pixels,
+// so visually it looks like "nothing is happening".
+function getAlphaBounds(source, threshold = 8) {
+  const w = source.naturalWidth || source.width
+  const h = source.naturalHeight || source.height
+
   const c = document.createElement('canvas')
-  c.width = sw; c.height = sh
+  c.width = w
+  c.height = h
   const ctx = c.getContext('2d')
+  ctx.drawImage(source, 0, 0, w, h)
+
+  const id = ctx.getImageData(0, 0, w, h)
+  const d = id.data
+
+  let minX = w
+  let minY = h
+  let maxX = -1
+  let maxY = -1
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = d[(y * w + x) * 4 + 3]
+      if (a > threshold) {
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    return { x: 0, y: 0, w, h }
+  }
+
+  const pad = Math.max(2, Math.round(Math.min(w, h) * 0.025))
+  minX = Math.max(0, minX - pad)
+  minY = Math.max(0, minY - pad)
+  maxX = Math.min(w - 1, maxX + pad)
+  maxY = Math.min(h - 1, maxY + pad)
+
+  return {
+    x: minX,
+    y: minY,
+    w: maxX - minX + 1,
+    h: maxY - minY + 1,
+  }
+}
+
+// Pre-render tattoo at target size onto a stamp canvas.
+// Mirror is applied here so warp functions receive an already-mirrored stamp.
+// The stamp is cropped to visible alpha bounds first so warp affects the actual ink,
+// not transparent padding around the design.
+function buildStamp(tattoo, targetW, mirror) {
+  const bounds = getAlphaBounds(tattoo)
+  const scale = targetW / bounds.w
+
+  const sw = Math.max(2, Math.round(bounds.w * scale))
+  const sh = Math.max(2, Math.round(bounds.h * scale))
+
+  const c = document.createElement('canvas')
+  c.width = sw
+  c.height = sh
+  const ctx = c.getContext('2d')
+  ctx.clearRect(0, 0, sw, sh)
+
   if (mirror) {
     ctx.translate(sw, 0)
     ctx.scale(-1, 1)
   }
-  ctx.drawImage(tattoo, 0, 0, sw, sh)
+
+  ctx.drawImage(
+    tattoo,
+    bounds.x, bounds.y, bounds.w, bounds.h,
+    0, 0, sw, sh
+  )
+
   return c
 }
 
@@ -153,7 +219,10 @@ function drawCylinder(ctx, stamp, opacity, preset, strength) {
   const sh = stamp.height
   const curve    = (preset.curve    ?? 0.45) * strength
   const bulge    = (preset.bulge    ?? 0.08) * strength
-  const edgeFloor = preset.edgeFloor ?? 0.30  // min width ratio even at edges — not scaled
+  const baseEdgeFloor = preset.edgeFloor ?? 0.30
+  // At higher strength, let edge slices compress more.
+  // This makes the wrap visible instead of only producing microscopic distortion.
+  const edgeFloor = clamp(baseEdgeFloor - (0.14 * strength), 0.07, baseEdgeFloor)
   const tilt      = preset.tilt      ?? 0.0   // vertical shift per slice — not scaled
   const slices    = preset.slices    ?? Math.max(60, Math.round(sw / 6))
 
@@ -203,7 +272,8 @@ function drawBulge(ctx, stamp, opacity, preset, strength) {
   const curve    = (preset.curve    ?? 0.28) * strength
   const bulge    = (preset.bulge    ?? 0.10) * strength
   const lift     = (preset.lift     ?? 0.015) * strength
-  const edgeFloor = preset.edgeFloor ?? 0.45
+  const baseEdgeFloor = preset.edgeFloor ?? 0.45
+  const edgeFloor = clamp(baseEdgeFloor - (0.10 * strength), 0.16, baseEdgeFloor)
   const slices    = preset.slices    ?? Math.max(56, Math.round(sw / 6))
 
   const weights = []
@@ -279,7 +349,7 @@ function drawPerspective(ctx, stamp, opacity, preset, strength) {
 // Dispatcher — routes to correct draw function based on preset type
 // strength = 0.0 means flat (all warp functions blend toward flat at strength=0)
 function drawWarped(ctx, stamp, opacity, preset, strength) {
-  if (!preset || strength === 0) {
+  if (!preset || strength <= 0.001) {
     drawFlat(ctx, stamp, opacity)
     return
   }
@@ -448,6 +518,7 @@ export default function TryOnPage() {
     // Size is % of shorter canvas dimension — resolution-independent, never changes during drag
     const base = Math.min(cw, ch)
     const targetW = base * size
+    // buildStamp trims transparent padding first, so warping affects the visible tattoo.
     const stamp = buildStamp(tattoo, targetW, mirror)
 
     // Get warp preset for current template
